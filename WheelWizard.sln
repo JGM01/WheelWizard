@@ -4,6 +4,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WheelWizard", "WheelWizard\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WheelWizard.Test", "WheelWizard.Test\WheelWizard.Test.csproj", "{C2A6FF37-2E6B-4683-A8DA-AD965E1CC55A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WheelWizard.Core", "WheelWizard.Core\WheelWizard.Core.csproj", "{F9999A68-D5BF-4860-9AF1-B20C2CBD23F5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +20,9 @@ Global
 		{C2A6FF37-2E6B-4683-A8DA-AD965E1CC55A}.Release|Any CPU.Build.0 = Release|Any CPU
 		{C2A6FF37-2E6B-4683-A8DA-AD965E1CC55A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{C2A6FF37-2E6B-4683-A8DA-AD965E1CC55A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F9999A68-D5BF-4860-9AF1-B20C2CBD23F5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F9999A68-D5BF-4860-9AF1-B20C2CBD23F5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F9999A68-D5BF-4860-9AF1-B20C2CBD23F5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F9999A68-D5BF-4860-9AF1-B20C2CBD23F5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

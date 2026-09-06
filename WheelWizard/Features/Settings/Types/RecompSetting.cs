@@ -47,58 +47,17 @@ public class RecompSetting : Setting
         return this;
     }
 
-    public string GetStringValue() =>
-        Value switch
-        {
-            bool flag => flag ? "true" : "false",
-            string text => QuoteBasicString(text),
-            double number => number.ToString("0.0###", CultureInfo.InvariantCulture),
-            _ => Convert.ToString(Value, CultureInfo.InvariantCulture) ?? string.Empty,
-        };
+    public string GetStringValue() => WheelWizard.Core.RuntimeConfiguration.Format(Value);
 
-    /// <summary>
-    /// A TOML basic string must escape backslashes and quotes. Writing a Windows path raw makes the
-    /// whole file invalid TOML, and the runtime then silently discards every setting in it.
-    /// </summary>
-    private static string QuoteBasicString(string text) => $"\"{text.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"";
-
-    /// <summary>
-    /// Reads a TOML literal from the file. An unparsable value returns <see langword="false"/> and
-    /// keeps the current value, mirroring the runtime, which silently discards an invalid value and
-    /// falls back to its default.
-    /// </summary>
     public bool SetFromString(string tomlValue, bool skipSave = false)
     {
-        var literal = tomlValue.Trim();
-        return ValueType switch
+        try
         {
-            { } t when t == typeof(string) => Set(Unquote(literal), skipSave),
-            { } t when t == typeof(bool) => bool.TryParse(literal, out var flag) && Set(flag, skipSave),
-            { } t when t == typeof(double) => double.TryParse(literal, NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
-                && Set(number, skipSave),
-            _ => throw new InvalidOperationException($"Unsupported type: {ValueType.Name}"),
-        };
-    }
-
-    private static string Unquote(string literal)
-    {
-        if (literal.Length < 2)
-            return literal;
-        // A single-quoted TOML literal string has no escapes; a double-quoted basic string does, and
-        // the backend writes paths with escaped backslashes, so they must be decoded here.
-        if (literal[0] == '\'' && literal[^1] == '\'')
-            return literal[1..^1];
-        if (literal[0] != '"' || literal[^1] != '"')
-            return literal;
-
-        var inner = literal[1..^1];
-        var result = new StringBuilder(inner.Length);
-        for (var i = 0; i < inner.Length; i++)
-        {
-            if (inner[i] == '\\' && i + 1 < inner.Length && (inner[i + 1] == '\\' || inner[i + 1] == '"'))
-                i++;
-            result.Append(inner[i]);
+            return Set(WheelWizard.Core.RuntimeConfiguration.Parse(tomlValue, ValueType), skipSave);
         }
-        return result.ToString();
+        catch (Exception e) when (e is FormatException or System.Text.Json.JsonException)
+        {
+            return false;
+        }
     }
 }
