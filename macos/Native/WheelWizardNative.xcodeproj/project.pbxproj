@@ -17,6 +17,7 @@
 		F000000000000000000000A7 /* StatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000032 /* StatusView.swift */; };
 		F000000000000000000000A8 /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000033 /* SetupView.swift */; };
 		F000000000000000000000AF /* ModsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000039 /* ModsView.swift */; };
+		F000000000000000000000B2 /* ModBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000003B /* ModBrowserView.swift */; };
 		F000000000000000000000A9 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000034 /* SettingsView.swift */; };
 /* End PBXBuildFile section */
 
@@ -31,6 +32,7 @@
 		F00000000000000000000032 /* StatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusView.swift; sourceTree = "<group>"; };
 		F00000000000000000000033 /* SetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
 		F00000000000000000000039 /* ModsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModsView.swift; sourceTree = "<group>"; };
+		F0000000000000000000003B /* ModBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModBrowserView.swift; sourceTree = "<group>"; };
 		F00000000000000000000034 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A00000000000000000000008 /* WheelWizardNative.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WheelWizardNative.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -73,6 +75,7 @@
 				F00000000000000000000032 /* StatusView.swift */,
 				F00000000000000000000033 /* SetupView.swift */,
 				F00000000000000000000039 /* ModsView.swift */,
+				F0000000000000000000003B /* ModBrowserView.swift */,
 				F00000000000000000000034 /* SettingsView.swift */,
 			);
 			path = Views;
@@ -130,6 +133,7 @@
 				F000000000000000000000A9 /* SettingsView.swift in Sources */,
 				F000000000000000000000A8 /* SetupView.swift in Sources */,
 				F000000000000000000000AF /* ModsView.swift in Sources */,
+				F000000000000000000000B2 /* ModBrowserView.swift in Sources */,
 				F000000000000000000000A7 /* StatusView.swift in Sources */,
 				F000000000000000000000A6 /* ProductDetailView.swift in Sources */,
 				F000000000000000000000A5 /* ContentView.swift in Sources */,

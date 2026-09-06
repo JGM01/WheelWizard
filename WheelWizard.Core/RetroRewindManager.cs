@@ -170,13 +170,7 @@ public sealed class RetroRewindManager(HttpClient http)
             try
             {
                 progress?.Report(new PackageProgress(update.Description, null));
-                using (var response = await http.GetAsync(Resolve(update.Url), HttpCompletionOption.ResponseHeadersRead, ct))
-                {
-                    response.EnsureSuccessStatusCode();
-                    await using var input = await response.Content.ReadAsStreamAsync(ct);
-                    await using (var output = File.Create(zip))
-                        await input.CopyToAsync(output, ct);
-                }
+                await HttpDownloads.ToFileAsync(http, Resolve(update.Url), zip, null, ct);
                 RetroRewindPackage.Extract(zip, root, progress, ct);
                 WriteVersion(root, update.Version);
             }

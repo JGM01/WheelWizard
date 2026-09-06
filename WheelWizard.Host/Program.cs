@@ -1,4 +1,6 @@
 using System.Text.Json;
+using WheelWizard.Core;
+using WheelWizard.Core.GameBanana;
 using WheelWizard.Core.Mods;
 using WheelWizard.Core.Recomp;
 using WheelWizard.Host;
@@ -8,6 +10,10 @@ var root =
     ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library/Application Support/WheelWizardNative");
 var workflow = new ProductWorkflow(root, Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../tools")));
 var mods = new ModLibrary(Path.Combine(root, "Mods"));
+// Tests point this at a local stub so the offline bridge suite never needs GameBanana.
+var gameBananaBaseUrl = Environment.GetEnvironmentVariable("WHEELWIZARD_GAMEBANANA_URL");
+var gameBananaHttp = new HttpClient();
+var gameBanana = new GameBananaCatalog(gameBananaHttp, gameBananaBaseUrl);
 Directory.CreateDirectory(workflow.Logs);
 var outputLock = new object();
 void Send(HostEvent value)
@@ -86,8 +92,8 @@ try
                             await mods.ImportNext(
                                 req.ArchivePath ?? throw new ArgumentException("archivePath required"),
                                 req.ModTitle ?? throw new ArgumentException("modTitle required"),
-                                new ModEventProgress(update => Emit("progress", new { stage = update.Stage, percent = update.Percent })),
-                                ct
+                                progress: new ModEventProgress(update => Emit("progress", new { stage = update.Stage, percent = update.Percent })),
+                                ct: ct
                             );
                             result = new { mods = mods.Load() };
                             break;
@@ -105,6 +111,10 @@ try
                             );
                             result = new { mods = mods.Load() };
                             break;
+                        case "mods-reorder":
+                            mods.Reorder(req.Titles ?? throw new ArgumentException("titles required"));
+                            result = new { mods = mods.Load() };
+                            break;
                         case "mods-remove":
                             mods.Remove(req.ModTitle ?? throw new ArgumentException("modTitle required"));
                             result = new { mods = mods.Load() };
@@ -112,6 +122,63 @@ try
                         case "mods-preview":
                             result = ModLaunchPlanner.Build(mods.Root, mods.Load(ct), ct);
                             break;
+                        case "mods-search":
+                            result = ModSearchProjection(
+                                RequireResult(await gameBanana.GetModSearchResults(req.Search ?? "", req.Page ?? 1, ct))
+                            );
+                            break;
+                        case "mods-details":
+                            result = ModDetailsProjection(
+                                RequireResult(
+                                    await gameBanana.GetModDetails(req.ModId ?? throw new ArgumentException("modId required"), ct)
+                                )
+                            );
+                            break;
+                        case "mods-install":
+                        {
+                            var modTitle = req.ModTitle ?? throw new ArgumentException("modTitle required");
+                            var uri = new Uri(req.Url ?? throw new ArgumentException("url required"));
+                            ValidateModDownloadUrl(uri, gameBananaBaseUrl);
+                            var downloads = Path.Combine(mods.Root, ".downloads");
+                            Directory.CreateDirectory(downloads);
+                            var dest = Path.Combine(
+                                downloads,
+                                Guid.NewGuid().ToString("N") + Path.GetExtension(uri.AbsolutePath)
+                            );
+                            try
+                            {
+                                await HttpDownloads.ToFileAsync(
+                                    gameBananaHttp,
+                                    uri,
+                                    dest,
+                                    percent => Emit("progress", new { stage = "download", percent }),
+                                    ct
+                                );
+                                // GameBanana download links often carry no filename; sniff the real container type.
+                                var detected = DetectArchiveExtension(dest);
+                                if (detected != null && !string.Equals(Path.GetExtension(dest), detected, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    var renamed = dest + detected;
+                                    File.Move(dest, renamed);
+                                    dest = renamed;
+                                }
+                                await mods.ImportNext(
+                                    dest,
+                                    modTitle,
+                                    req.Author ?? "-1",
+                                    req.ModId ?? -1,
+                                    new ModEventProgress(update => Emit("progress", new { stage = update.Stage, percent = update.Percent })),
+                                    ct
+                                );
+                            }
+                            finally
+                            {
+                                if (File.Exists(dest))
+                                    File.Delete(dest);
+                            }
+                            result = new { mods = mods.Load() };
+                            break;
+                        }
                         case "preflight":
                             result = new { setup, errors = workflow.Preflight(setup) };
                             break;
@@ -213,6 +280,84 @@ catch (OperationCanceledException) { }
 active?.Cancel();
 await running;
 active?.Dispose();
+
+// Slim, Swift-friendly projections of the GameBanana catalog (see macos/Native README). Only the
+// fields the native browser renders travel over the protocol; image URLs are absolute here.
+static object? ModSearchProjection(GameBananaSearchResults value) =>
+    new
+    {
+        recordCount = value.MetaData.RecordCount,
+        perPage = value.MetaData.PerPage,
+        isComplete = value.MetaData.IsComplete,
+        results = value
+            .Records.Where(mod => mod.ModelName == "Mod" && !mod.HasContentRatings)
+            .Select(mod => new
+            {
+                id = mod.Id,
+                name = mod.Name,
+                version = mod.Version,
+                author = mod.Author.Name,
+                profileUrl = mod.ProfileUrl,
+                imageUrl = mod.PreviewMedia?.Images.FirstOrDefault() is { } image ? image.BaseUrl + "/" + image.File : null,
+                likeCount = mod.LikeCount,
+                viewCount = mod.ViewCount,
+                usesPatches = mod.UsesPatches,
+                tags = mod.Tags.Select(tag => tag.Title).ToArray(),
+            }),
+    };
+
+static object? ModDetailsProjection(GameBananaModDetails mod) =>
+    new
+    {
+        id = mod.Id,
+        name = mod.Name,
+        version = mod.Version,
+        profileUrl = mod.ProfileUrl,
+        author = new { name = mod.Author.Name, profileUrl = mod.Author.ProfileUrl },
+        likeCount = mod.LikeCount,
+        viewCount = mod.ViewCount,
+        downloadCount = mod.DownloadCount,
+        text = mod.Text,
+        images = (mod.PreviewMedia?.Images ?? []).Select(image => image.BaseUrl + "/" + image.File).ToArray(),
+        files = (mod.Files ?? []).Select(ModFileProjection).ToArray(),
+        archivedFiles = (mod.ArchivedFiles ?? []).Select(ModFileProjection).ToArray(),
+    };
+
+static object ModFileProjection(GameBananaModFiles file) =>
+    new { fileName = file.FileName, fileSize = file.FileSize, downloadUrl = file.DownloadUrl };
+
+// OperationResult carries the real failure message; throw it instead of tripping OperationResult<T>.Value's
+// generic "The operation was not successful." so the caller sees what actually went wrong.
+static T RequireResult<T>(OperationResult<T> result) =>
+    result.IsSuccess ? result.Value : throw new InvalidOperationException(result.Error.Message);
+
+static void ValidateModDownloadUrl(Uri uri, string? overrideBaseUrl)
+{
+    // Tests override the catalog base with a local http:// stub; allow downloads only from that host then.
+    var overrideUri = overrideBaseUrl is null ? null : new Uri(overrideBaseUrl);
+    var matchesOverride =
+        overrideUri != null
+        && uri.Scheme == overrideUri.Scheme
+        && uri.Host == overrideUri.Host
+        && uri.Port == overrideUri.Port;
+    if (!matchesOverride && !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        throw new ArgumentException("Mod download URL must use HTTPS.");
+}
+
+// GameBanana file download links are usually /dl/{id} with no extension; the container decides.
+static string? DetectArchiveExtension(string path)
+{
+    Span<byte> head = stackalloc byte[6];
+    using var stream = File.OpenRead(path);
+    var read = stream.Read(head);
+    if (read >= 4 && head[0] == (byte)'P' && head[1] == (byte)'K' && head[2] == 3 && head[3] == 4)
+        return ".zip";
+    if (read >= 6 && head[0] == 0x37 && head[1] == 0x7A && head[2] == 0xBC && head[3] == 0xAF && head[4] == 0x27 && head[5] == 0x1C)
+        return ".7z";
+    if (read >= 4 && head[0] == (byte)'R' && head[1] == (byte)'a' && head[2] == (byte)'r' && head[3] == (byte)'!')
+        return ".rar";
+    return null;
+}
 
 // Synchronous reporting keeps progress events before the terminal result.
 sealed class ModEventProgress(Action<ModProgress> report) : IProgress<ModProgress>

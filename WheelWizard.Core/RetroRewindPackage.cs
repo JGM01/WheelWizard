@@ -44,33 +44,7 @@ public sealed class RetroRewindPackage(HttpClient http)
         try
         {
             var zip = System.IO.Path.Combine(stage, "package.zip");
-            using (var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct))
-            {
-                response.EnsureSuccessStatusCode();
-                await using var input = await response.Content.ReadAsStreamAsync(ct);
-                await using var output = File.Create(zip);
-                long lastProgress = 0;
-                var buffer = new byte[131072];
-                long total = 0;
-                int count;
-                while ((count = await input.ReadAsync(buffer, ct)) > 0)
-                {
-                    await output.WriteAsync(buffer.AsMemory(0, count), ct);
-                    total += count;
-                    if (Environment.TickCount64 - lastProgress >= 100)
-                    {
-                        lastProgress = Environment.TickCount64;
-                        progress?.Report(
-                            new(
-                                "download",
-                                response.Content.Headers.ContentLength is > 0
-                                    ? total * 100d / response.Content.Headers.ContentLength.Value
-                                    : null
-                            )
-                        );
-                    }
-                }
-            }
+            await HttpDownloads.ToFileAsync(http, url, zip, percent => progress?.Report(new("download", percent)), ct);
             var extracted = System.IO.Path.Combine(stage, "content");
             Extract(zip, extracted, progress, ct);
             File.Delete(zip);

@@ -1,7 +1,6 @@
 ﻿using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
-using WheelWizard.GameBanana;
-using WheelWizard.GameBanana.Domain;
+using WheelWizard.Core.GameBanana;
 using WheelWizard.Helpers;
 using WheelWizard.Mods;
 using WheelWizard.Services;
@@ -20,7 +19,7 @@ public partial class ModContent : UserControlBase
     private string? OverrideDownloadUrl { get; set; }
 
     [Inject]
-    private IGameBananaSingletonService GameBananaService { get; set; } = null!;
+    private GameBananaCatalog GameBananaService { get; set; } = null!;
 
     [Inject]
     private IModManager ModManager { get; set; } = null!;

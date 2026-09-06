@@ -49,3 +49,49 @@ struct ModLaunchFile: Codable, Identifiable {
     let overwritten: [ModFileSource]
     var id: String { destination }
 }
+
+// Slim GameBanana catalog rows/detail sent by the helper (see Host ModSearchProjection/ModDetailsProjection).
+struct CatalogMod: Codable, Identifiable, Equatable {
+    let id: Int
+    let name: String
+    let version: String
+    let author: String
+    let profileUrl: String
+    let imageUrl: String?
+    let likeCount: Int
+    let viewCount: Int
+    let usesPatches: Bool
+    let tags: [String]
+}
+
+struct CatalogAuthor: Codable {
+    let name: String
+    let profileUrl: String
+}
+
+struct CatalogFile: Codable, Identifiable {
+    let fileName: String
+    let fileSize: Int
+    let downloadUrl: String
+    var id: String { downloadUrl }
+}
+
+struct CatalogModDetail: Codable {
+    let id: Int
+    let name: String
+    let version: String
+    let profileUrl: String
+    let author: CatalogAuthor
+    let likeCount: Int
+    let viewCount: Int
+    let downloadCount: Int
+    let text: String
+    let images: [String]
+    let files: [CatalogFile]
+    let archivedFiles: [CatalogFile]
+}
+
+struct CatalogSearchPage: Codable {
+    let results: [CatalogMod]
+    let isComplete: Bool
+}

@@ -68,8 +68,24 @@ Automated verification covers metadata/defaults, adapter notifications, staged i
 Manual UI acceptance remains to be recorded:
 
 - [ ] Import an archive through the native name sheet; confirm the new mod appears.
-- [ ] Toggle enabled state and move mods up/down; restart and verify saved state.
+- [ ] Toggle enabled state and drag a mod's grip handle to reorder; restart and verify saved state.
 - [ ] Preview overlapping files; inspect winner/overwritten sources and the All Files toggle.
 - [ ] Confirm library edits invalidate the preview; exercise empty/no-conflict/error states.
 - [ ] Cancel and confirm removal in separate attempts; confirm the source archive remains.
 - [ ] Confirm the native Play limitation is visible and existing game launch behavior is unchanged.
+
+## GameBanana catalog browse and install (2026-09-06)
+
+**109 Core tests, 197 framework tests, and the Swift app build passed.** The GameBanana catalog moved out of the Avalonia frontend into `WheelWizard.Core.GameBanana` (plain `HttpClient`, flattened DTOs, `OperationResult` semantics), a shared `WheelWizard.Core.HttpDownloads` primitive replaced the duplicated Retro Rewind download loops, `ModLibrary.ImportNext` records author/GameBanana id, and the host gained `mods-search`/`mods-details`/`mods-install` with slim Swift projections. The framework now injects `GameBananaCatalog` directly (Refit `IGameBananaApi`, `GameBananaSingletonService`, and `Endpoints.GameBananaBaseAddress` deleted). The native Mods page gained a **Browse Mods…** two-pane catalog sheet (search, Patches only, Load More, thumbnails, details, install). The SwiftUI target compiles clean via `xcodebuild`.
+
+Core tests cover search URL/term/page encoding, string and object tag parsing, `UsesPatches`, details/files/archived mapping, HTTP failure and cancellation, download-to-file, `ModLibrary.Reorder` priority rewriting/validation, and author/modID persistence. The bundled-helper bridge suite gained hermetic catalog tests that stub GameBanana through `WHEELWIZARD_GAMEBANANA_URL` (search, details, download-and-import with author/modID, cleanup, non-HTTPS rejection, and full-list `mods-reorder`).
+
+Manual UI acceptance remains to be recorded against the live catalog:
+
+- [ ] Open **Browse Mods…**; confirm the featured feed loads and thumbnails render.
+- [ ] Search a term, toggle **Patches only**, and **Load More** paginates without duplicates.
+- [ ] Select a mod; confirm details, description text, images and stats render; open the GameBanana link.
+- [ ] Install a mod through the name sheet; confirm it appears in the library with its author retained.
+- [ ] Confirm an already-installed mod shows **Installed** and cannot be installed twice.
+- [ ] Exercise offline/error states and a cancelled install; confirm `.downloads` cleanup.
+- [ ] Re-run the desktop frontend and confirm its mod browser still works against the shared Core catalog.

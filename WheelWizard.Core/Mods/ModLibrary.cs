@@ -111,13 +111,15 @@ public sealed class ModLibrary(string root)
     public Task<ModMetadata> ImportNext(
         string archivePath,
         string title,
+        string author = "-1",
+        int modID = -1,
         IProgress<ModProgress>? progress = null,
         CancellationToken ct = default
     )
     {
         var mods = Load(ct);
         var priority = mods.Count == 0 ? 1 : checked(mods.Max(mod => mod.Priority) + 1);
-        return Import(archivePath, title, priority, progress: progress, ct: ct);
+        return Import(archivePath, title, priority, author, modID, progress, ct);
     }
 
     public void SetEnabled(string title, bool enabled)
@@ -145,6 +147,20 @@ public sealed class ModLibrary(string root)
     {
         Find(Load(), title);
         DeleteDirectory(Root, DirectoryFor(title));
+    }
+
+    /// <summary>Reorders the whole library to the caller-supplied title order, writing contiguous priorities.
+    /// The set must match the current titles exactly; nothing is written otherwise.</summary>
+    public void Reorder(IEnumerable<string> titles)
+    {
+        var order = titles.ToList();
+        if (order.Count == 0)
+            throw new ArgumentException("Reorder requires at least one mod.");
+        var mods = Load();
+        var lookup = mods.ToDictionary(m => m.Title);
+        if (order.Count != mods.Count || order.Any(title => !lookup.ContainsKey(title)))
+            throw new ArgumentException("Reorder must contain exactly the current mod titles.");
+        Save(order.Select((title, index) => lookup[title] with { Priority = index }));
     }
 
     static ModMetadata Find(List<ModMetadata> mods, string title) =>

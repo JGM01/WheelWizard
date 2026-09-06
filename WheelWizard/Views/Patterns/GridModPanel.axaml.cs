@@ -4,7 +4,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Microsoft.Extensions.DependencyInjection;
-using WheelWizard.GameBanana;
+using WheelWizard.Core.GameBanana;
 using WheelWizard.Views.Pages;
 
 namespace WheelWizard.Views.Patterns;
@@ -60,11 +60,11 @@ public partial class GridModPanel : UserControl
 
         try
         {
-            var gameBananaService = App.Services.GetService<IGameBananaSingletonService>();
-            if (gameBananaService == null)
+            var gameBananaCatalog = App.Services.GetService<GameBananaCatalog>();
+            if (gameBananaCatalog == null)
                 return;
 
-            var result = await gameBananaService.GetModDetails(modId);
+            var result = await gameBananaCatalog.GetModDetails(modId);
             if (!result.IsSuccess || result.Value.PreviewMedia?.Images == null || result.Value.PreviewMedia.Images.Count == 0)
                 return;
 

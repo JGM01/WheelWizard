@@ -1,16 +1,97 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 struct ModsView: View {
     @EnvironmentObject var session: Session
+    @Environment(\.openWindow) private var openWindow
     @State private var archivePath = ""
     @State private var importName = ""
     @State private var showImport = false
     @State private var removal: ManagedMod?
     @State private var showAllFiles = false
+    @State private var draggedTitle: String?
+    @State private var draggedIndex: Int?
+    @State private var dropIndex: Int?
     private var disabled: Bool { session.busy || !session.connected }
+    private let rowPitch: CGFloat = 34
     private var previewFiles: [ModLaunchFile] {
         (session.modPreview ?? []).filter { showAllFiles || !$0.overwritten.isEmpty }
+    }
+
+    private var modRows: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(session.mods.enumerated()), id: \.element.id) { index, mod in
+                row(for: mod, index: index)
+            }
+        }
+        .overlay(alignment: .top) { insertionIndicator }
+        .onDrop(of: [UTType.text], delegate: ModRowDropDelegate(
+            pitch: rowPitch,
+            count: { session.mods.count },
+            draggedIndex: { draggedIndex },
+            setDropIndex: { dropIndex = $0 },
+            commit: commitReorder
+        ))
+    }
+
+    private func row(for mod: ManagedMod, index: Int) -> some View {
+        HStack(spacing: 8) {
+            grip
+                .onDrag {
+                    guard !disabled, session.mods.count > 1 else { return NSItemProvider() }
+                    draggedTitle = mod.title
+                    draggedIndex = index
+                    dropIndex = nil
+                    return NSItemProvider(object: mod.title as NSString)
+                }
+            Toggle(mod.title, isOn: Binding(get: { mod.isEnabled }, set: { enabled in
+                session.modCommand("mods-enabled", fields: ["modTitle": mod.title, "enabled": enabled])
+            }))
+            Spacer(minLength: 8)
+            Button("Remove…", role: .destructive) { removal = mod }
+        }
+        .frame(height: rowPitch)
+        .disabled(disabled)
+    }
+
+    private var grip: some View {
+        Image(systemName: "line.3.horizontal")
+            .foregroundStyle(.secondary)
+            .frame(width: 18, height: rowPitch)
+            .contentShape(Rectangle())
+            .help("Drag to reorder; top mods take precedence")
+    }
+
+    @ViewBuilder
+    private var insertionIndicator: some View {
+        if let dropIndex, session.mods.count > 1 {
+            let maxY = rowPitch * CGFloat(session.mods.count)
+            let y = min(max(CGFloat(dropIndex) * rowPitch - 1, 1), maxY - 1)
+            Rectangle()
+                .fill(Color.accentColor)
+                .frame(height: 2)
+                .frame(maxWidth: .infinity)
+                .offset(y: y)
+        }
+    }
+
+    private func commitReorder(to finalIndex: Int) -> Bool {
+        defer {
+            draggedTitle = nil
+            draggedIndex = nil
+            dropIndex = nil
+        }
+        guard let title = draggedTitle,
+              let source = draggedIndex,
+              session.mods.indices.contains(source),
+              session.mods[source].title == title
+        else { return false }
+        var order = session.mods.map(\.title)
+        order.remove(at: source)
+        order.insert(title, at: min(max(finalIndex, 0), order.count))
+        session.reorderMods(order)
+        return true
     }
 
     var body: some View {
@@ -20,6 +101,8 @@ struct ModsView: View {
                     .foregroundStyle(.secondary)
                 HStack {
                     Button("Import Archive…", action: chooseArchive)
+                    Button("Browse Mods…") { openWindow(id: "mod-catalog") }
+                        .help("Search GameBanana for Mario Kart Wii mods to install")
                     Button("Refresh") { session.refreshMods() }
                     Spacer()
                     Button("Preview Conflicts") { session.modCommand("mods-preview") }
@@ -38,26 +121,8 @@ struct ModsView: View {
                 if session.modsLoaded && session.mods.isEmpty {
                     ContentUnavailableView("No Mods", systemImage: "shippingbox", description: Text("Import a ZIP, 7z, or RAR archive to start a library."))
                 }
-                ForEach(Array(session.mods.enumerated()), id: \.element.id) { index, mod in
-                    HStack {
-                        Toggle(mod.title, isOn: Binding(get: { mod.isEnabled }, set: { enabled in
-                            session.modCommand("mods-enabled", fields: ["modTitle": mod.title, "enabled": enabled])
-                        }))
-                        Spacer()
-                        Text("Priority \(mod.priority)").foregroundStyle(.secondary)
-                        Button { session.modCommand("mods-move", fields: ["modTitle": mod.title, "direction": -1]) } label: {
-                            Image(systemName: "arrow.up")
-                        }
-                        .help("Move up: higher precedence")
-                        .disabled(index == 0)
-                        Button { session.modCommand("mods-move", fields: ["modTitle": mod.title, "direction": 1]) } label: {
-                            Image(systemName: "arrow.down")
-                        }
-                        .help("Move down: lower precedence")
-                        .disabled(index == session.mods.count - 1)
-                        Button("Remove…", role: .destructive) { removal = mod }
-                    }
-                    .disabled(disabled)
+                if !session.mods.isEmpty {
+                    modRows
                 }
                 Divider()
                 HStack {
@@ -137,5 +202,48 @@ struct ModsView: View {
             importName = url.deletingPathExtension().lastPathComponent
             showImport = true
         }
+    }
+}
+
+// Maps a drag location over the fixed-height mod rows to the gap the row is being dropped into.
+private struct ModRowDropDelegate: DropDelegate {
+    let pitch: CGFloat
+    let count: () -> Int
+    let draggedIndex: () -> Int?
+    let setDropIndex: (Int?) -> Void
+    let commit: (Int) -> Bool
+
+    private func gap(from info: DropInfo) -> Int? {
+        let n = count()
+        guard n > 1, let source = draggedIndex(), (0..<n).contains(source) else { return nil }
+        var index = Int((info.location.y + pitch / 2) / pitch)
+        index = min(max(index, 0), n)
+        return index
+    }
+
+    func dropEntered(info: DropInfo) {
+        setDropIndex(gap(from: info))
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        setDropIndex(gap(from: info))
+        return nil
+    }
+
+    func dropExited(info: DropInfo) {
+        setDropIndex(nil)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let source = draggedIndex(), let target = gap(from: info) else {
+            setDropIndex(nil)
+            return false
+        }
+        let n = count()
+        // Removing the source shifts later indices down by one, so a target past it lands one lower.
+        var finalIndex = target > source ? target - 1 : target
+        finalIndex = min(max(finalIndex, 0), n - 1)
+        setDropIndex(nil)
+        return commit(finalIndex)
     }
 }

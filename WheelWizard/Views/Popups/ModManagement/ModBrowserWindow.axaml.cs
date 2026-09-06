@@ -5,8 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
-using WheelWizard.GameBanana;
-using WheelWizard.GameBanana.Domain;
+using WheelWizard.Core.GameBanana;
 using WheelWizard.Shared.DependencyInjection;
 using WheelWizard.Views.Pages;
 using WheelWizard.Views.Popups.Base;
@@ -24,7 +23,7 @@ public partial class ModBrowserWindow : PopupContent, INotifyPropertyChanged
     private List<ModSearchResult> LoadedMods { get; } = [];
 
     [Inject]
-    private IGameBananaSingletonService GameBananaService { get; set; } = null!;
+    private GameBananaCatalog GameBananaService { get; set; } = null!;
 
     // Pagination variables
     private int _currentPage = 1;
@@ -224,7 +223,7 @@ public partial class ModBrowserWindow : PopupContent, INotifyPropertyChanged
             Mods.Add(mod);
 
         if (_hasMoreMods)
-            Mods.Add(new(GameBananaService.GetLoadingPreview(), ""));
+            Mods.Add(new(LoadingPreview(), ""));
 
         ModListView.SelectedItem = selectedModId == null ? null : Mods.FirstOrDefault(mod => mod.Mod.Id == selectedModId);
     }
@@ -239,6 +238,42 @@ public partial class ModBrowserWindow : PopupContent, INotifyPropertyChanged
     {
         await ReloadSearchResults();
     }
+
+    // The loading row only needs Name and Author.Name; the ModBrowserListItem renders a spinner for it.
+    private static GameBananaModPreview LoadingPreview() =>
+        new()
+        {
+            Id = 0,
+            Name = "LOADING",
+            Version = "",
+            ModelName = "",
+            Tags = [],
+            ProfileUrl = "",
+            LikeCount = 0,
+            ViewCount = 0,
+            DateAdded = 0,
+            DateModified = 0,
+            Game = new()
+            {
+                Name = "",
+                ProfileUrl = "",
+                IconUrl = "",
+            },
+            RootCategory = new()
+            {
+                Name = "",
+                ProfileUrl = "",
+                IconUrl = "",
+            },
+            Author = new()
+            {
+                Name = "LOADING",
+                ProfileUrl = "",
+                AvatarUrl = "",
+            },
+            PreviewMedia = new(),
+            HasContentRatings = false,
+        };
 
     #region Property Changed
 

@@ -9,7 +9,7 @@ using WheelWizard.CustomDistributions;
 using WheelWizard.DolphinInstaller;
 using WheelWizard.Features.Archives;
 using WheelWizard.Features.Patches;
-using WheelWizard.GameBanana;
+using WheelWizard.Core.GameBanana;
 using WheelWizard.GitHub;
 using WheelWizard.Localization;
 using WheelWizard.MiiImages;
@@ -44,13 +44,15 @@ public static class SetupExtensions
         services.AddRrRooms();
         services.AddWhWzData();
         services.AddWiiManagement();
-        services.AddGameBanana();
         services.AddMiiImages();
         services.AddCustomDistributionService();
         services.AddArchives();
         services.AddPatches();
         services.AddMods();
         services.AddRecomp();
+
+        // The GameBanana catalog is consumed directly by the mod browser and installed-mod images.
+        services.AddHttpClient<GameBananaCatalog>(client => client.BaseAddress = new(GameBananaCatalog.DefaultBaseUrl));
 
         // IO Abstractions
         services.AddSingleton<IFileSystem, RealFileSystem>();

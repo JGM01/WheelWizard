@@ -10,8 +10,17 @@ struct WheelWizardApp: App {
             ContentView()
                 .environmentObject(session)
                 .environmentObject(session.activity)
+                .background(WindowAccessor { window in
+                    delegate.mainWindow = window
+                })
                 .onAppear { delegate.session = session }
         }
+        Window("Mod Catalog", id: "mod-catalog") {
+            ModBrowserView()
+                .environmentObject(session)
+                .frame(minWidth: 880, minHeight: 580)
+        }
+        .defaultSize(width: 980, height: 660)
         Settings {
             TabView {
                 SetupView()

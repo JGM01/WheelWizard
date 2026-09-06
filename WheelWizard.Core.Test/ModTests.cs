@@ -44,6 +44,49 @@ public sealed class ModTests : IDisposable
     }
 
     [Fact]
+    public async Task BrowserImportRecordsAuthorAndModId()
+    {
+        var archive = Archive(("nested/course.bin", "track"));
+        await Library.ImportNext(archive, "FromCatalog", "Builder", 77);
+        var mod = Assert.Single(Library.Load());
+        Assert.Equal("FromCatalog", mod.Title);
+        Assert.Equal("Builder", mod.Author);
+        Assert.Equal(77, mod.ModID);
+        Assert.Equal(1, mod.Priority);
+    }
+
+    [Fact]
+    public async Task ReorderRewritesContiguousPriorities()
+    {
+        var archive = Archive(("nested/course.bin", "track"));
+        await Library.ImportNext(archive, "First");
+        await Library.ImportNext(archive, "Second");
+        await Library.ImportNext(archive, "Third");
+
+        Library.Reorder(["Third", "First", "Second"]);
+        Assert.Equal(["Third", "First", "Second"], Library.Load().Select(m => m.Title));
+        Assert.Equal([0, 1, 2], Library.Load().Select(m => m.Priority));
+
+        Library.Reorder(["Third", "Second", "First"]);
+        Assert.Equal([0, 1, 2], Library.Load().Select(m => m.Priority));
+        Assert.Equal("Third", Library.Load()[0].Title);
+    }
+
+    [Fact]
+    public async Task ReorderRejectsMismatchedTitlesWithoutWriting()
+    {
+        var archive = Archive(("nested/course.bin", "track"));
+        await Library.ImportNext(archive, "First");
+        await Library.ImportNext(archive, "Second");
+
+        Assert.Throws<ArgumentException>(() => Library.Reorder(["First"]));
+        Assert.Throws<ArgumentException>(() => Library.Reorder(["First", "Nope"]));
+        Assert.Throws<ArgumentException>(() => Library.Reorder(["First", "Second", "Third"]));
+        Assert.Equal(["First", "Second"], Library.Load().Select(m => m.Title));
+        Assert.Equal([1, 2], Library.Load().Select(m => m.Priority));
+    }
+
+    [Fact]
     public async Task SevenZipImport()
     {
         // A one-file 7z fixture generated with bsdtar, independent of SharpCompress's reader.
@@ -92,8 +135,8 @@ public sealed class ModTests : IDisposable
                 Library.ImportNext(
                     Archive(("a", "x"), ("b", "y")),
                     "Cancelled",
-                    new CallbackProgress(_ => cancellation.Cancel()),
-                    cancellation.Token
+                    progress: new CallbackProgress(_ => cancellation.Cancel()),
+                    ct: cancellation.Token
                 )
         );
         Assert.Empty(Library.Load());

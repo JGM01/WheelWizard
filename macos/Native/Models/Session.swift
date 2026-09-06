@@ -20,6 +20,14 @@ final class Session: ObservableObject {
     @Published var modsLoaded = false
     private var wantsModsRefresh = false
 
+    @Published var catalogResults = [CatalogMod]()
+    @Published var catalogDetail: CatalogModDetail?
+    @Published var catalogBusy = false
+    var catalogComplete = true
+    private var catalogQuery = ""
+    private var catalogPage = 1
+    private var catalogRequestedPage = 1
+
     let activity = Activity()
 
     var quitWhenIdle = false
@@ -136,6 +144,13 @@ final class Session: ObservableObject {
         modsLoaded = false
         modPreview = nil
         wantsModsRefresh = false
+        catalogResults.removeAll()
+        catalogDetail = nil
+        catalogBusy = false
+        catalogComplete = true
+        catalogQuery = ""
+        catalogPage = 1
+        catalogRequestedPage = 1
         wantsPackageState = false
         packageStateFeedback = false
         input = nil
@@ -344,8 +359,11 @@ final class Session: ObservableObject {
             activity.message = text
             activity.append(text)
             setResult(domain, text)
-            if command.hasPrefix("mods-") && command != "mods-list" && command != "mods-preview" {
+            if ["mods-import", "mods-enabled", "mods-move", "mods-reorder", "mods-remove", "mods-install"].contains(command) {
                 wantsModsRefresh = true
+            }
+            if ["mods-search", "mods-details", "mods-install"].contains(command) {
+                catalogBusy = false
             }
             if command == "launch" {
                 send("config-read")
@@ -362,22 +380,53 @@ final class Session: ObservableObject {
             if let package = payload["package"] as? [String: Any] {
                 updatePackage(package)
             }
-            if command.hasPrefix("mods-") {
+            switch command {
+            case "mods-preview":
                 do {
-                    if command == "mods-preview" {
-                        let data = try JSONSerialization.data(withJSONObject: payload["files"] ?? [])
-                        modPreview = try JSONDecoder().decode([ModLaunchFile].self, from: data)
+                    let data = try JSONSerialization.data(withJSONObject: payload["files"] ?? [])
+                    modPreview = try JSONDecoder().decode([ModLaunchFile].self, from: data)
+                } catch {
+                    setResult("mods", "Could not read mod results: \(error.localizedDescription)")
+                }
+            case "mods-search":
+                catalogBusy = false
+                do {
+                    let data = try JSONSerialization.data(withJSONObject: payload)
+                    let page = try JSONDecoder().decode(CatalogSearchPage.self, from: data)
+                    if catalogRequestedPage == 1 {
+                        catalogResults = page.results
                     } else {
-                        let data = try JSONSerialization.data(withJSONObject: payload["mods"] ?? [])
-                        mods = try JSONDecoder().decode([ManagedMod].self, from: data)
-                        modsLoaded = true
+                        var seen = Set(catalogResults.map(\.id))
+                        catalogResults += page.results.filter { seen.insert($0.id).inserted }
                     }
+                    catalogComplete = page.isComplete
+                    catalogPage = catalogRequestedPage
+                    setResult("catalog", "")
+                } catch {
+                    setResult("catalog", "Could not read catalog results: \(error.localizedDescription)")
+                }
+            case "mods-details":
+                catalogBusy = false
+                do {
+                    let data = try JSONSerialization.data(withJSONObject: payload)
+                    catalogDetail = try JSONDecoder().decode(CatalogModDetail.self, from: data)
+                    setResult("catalog", "")
+                } catch {
+                    setResult("catalog", "Could not read mod details: \(error.localizedDescription)")
+                }
+            case "mods-list", "mods-import", "mods-enabled", "mods-move", "mods-reorder", "mods-remove", "mods-install":
+                do {
+                    let data = try JSONSerialization.data(withJSONObject: payload["mods"] ?? [])
+                    mods = try JSONDecoder().decode([ManagedMod].self, from: data)
+                    modsLoaded = true
                     if command != "mods-list" { setResult("mods", "") }
                 } catch {
                     setResult("mods", "Could not read mod results: \(error.localizedDescription)")
                 }
-            }
-            switch command {
+                if command == "mods-install" {
+                    catalogBusy = false
+                    setResult("catalog", "")
+                }
             case "preflight":
                 if let value = payload["setup"],
                    let data = try? JSONSerialization.data(withJSONObject: value),
@@ -475,6 +524,57 @@ final class Session: ObservableObject {
         modPreview = nil
         domainResults["mods"] = ""
         send(command, domain: "mods", fields: fields)
+    }
+
+    func reorderMods(_ orderedTitles: [String]) {
+        modCommand("mods-reorder", fields: ["titles": orderedTitles])
+    }
+
+    func catalogCommand(_ command: String, fields: [String: Any]) {
+        guard connected, !busy else { return }
+        catalogBusy = true
+        domainResults["catalog"] = ""
+        send(command, domain: "catalog", fields: fields)
+    }
+
+    // The catalog query text survives window close/reopen, so the search field can be reseeded.
+    var activeCatalogQuery: String { catalogQuery }
+
+    // Drop stale detail and error state when the browser reopens; the last results are kept.
+    func clearCatalogFeedback() {
+        domainResults["catalog"] = ""
+        catalogDetail = nil
+    }
+
+    // First page of a (possibly empty) search replaces the list; later pages append.
+    func reloadCatalog(_ query: String) {
+        catalogQuery = query
+        catalogRequestedPage = 1
+        catalogResults.removeAll()
+        catalogComplete = false
+        catalogDetail = nil
+        catalogCommand("mods-search", fields: ["search": query, "page": 1])
+    }
+
+    func loadMoreCatalog() {
+        guard !catalogComplete else { return }
+        catalogRequestedPage = catalogPage + 1
+        catalogCommand("mods-search", fields: ["search": catalogQuery, "page": catalogRequestedPage])
+    }
+
+    func loadModDetails(_ id: Int) {
+        catalogCommand("mods-details", fields: ["modId": id])
+    }
+
+    func installCatalogMod(detail: CatalogModDetail, title: String) {
+        let file = detail.files.first ?? detail.archivedFiles.first
+        guard let file else { return }
+        catalogCommand("mods-install", fields: [
+            "url": file.downloadUrl,
+            "modTitle": title,
+            "author": detail.author.name,
+            "modId": detail.id,
+        ])
     }
 
     func updatePackage(_ value: [String: Any]) {

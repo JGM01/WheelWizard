@@ -13,7 +13,13 @@ public record Request(
     string? ModTitle = null,
     string? ArchivePath = null,
     bool? Enabled = null,
-    int? Direction = null
+    int? Direction = null,
+    string? Search = null,
+    int? Page = null,
+    int? ModId = null,
+    string? Url = null,
+    string? Author = null,
+    string[]? Titles = null
 );
 
 public record HostEvent(int Version, string Id, string Kind, object? Data = null, string? Outcome = null, string? Error = null);
