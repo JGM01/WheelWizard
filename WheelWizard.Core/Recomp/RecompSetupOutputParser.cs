@@ -1,7 +1,6 @@
 using System.Text.Json;
-using WheelWizard.Recomp.Domain;
 
-namespace WheelWizard.Recomp;
+namespace WheelWizard.Core.Recomp;
 
 /// <summary>
 /// Parses the NDJSON stdout stream of <c>WiiCompiled-Setup.exe --progress-json</c>.

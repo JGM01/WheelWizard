@@ -1,3 +1,4 @@
+using WheelWizard.Core.GitHub;
 using System.Diagnostics;
 using System.IO.Abstractions;
 using System.Security.Principal;

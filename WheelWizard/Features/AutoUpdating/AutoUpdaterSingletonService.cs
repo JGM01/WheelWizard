@@ -1,3 +1,4 @@
+using WheelWizard.Core.GitHub;
 using Avalonia.Threading;
 using Semver;
 using WheelWizard.AutoUpdating.Platforms;

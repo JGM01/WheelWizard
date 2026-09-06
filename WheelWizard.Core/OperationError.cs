@@ -1,6 +1,5 @@
-﻿using WheelWizard.Shared.MessageTranslations;
 
-namespace WheelWizard.Shared;
+namespace WheelWizard.Core;
 
 /// <summary>
 /// Represents an error that occurred during an operation.

@@ -1,6 +1,4 @@
-using WheelWizard.Recomp.Domain;
-
-namespace WheelWizard.Recomp;
+namespace WheelWizard.Core.Recomp;
 
 /// <summary>
 /// What the install service should do about the Retro-WFC payload for the next setup operation.

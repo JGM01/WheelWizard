@@ -1,7 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using Semver;
 
-namespace WheelWizard.Recomp;
+namespace WheelWizard.Core.Recomp;
 
 /// <summary>
 /// Version parsing shared by the release resolver and the status resolver.

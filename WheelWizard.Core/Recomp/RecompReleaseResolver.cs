@@ -1,7 +1,6 @@
-using WheelWizard.GitHub.Domain;
-using WheelWizard.Recomp.Domain;
+using WheelWizard.Core.GitHub;
 
-namespace WheelWizard.Recomp;
+namespace WheelWizard.Core.Recomp;
 
 /// <summary>
 /// Picks the newest usable recomp release out of a GitHub releases listing.

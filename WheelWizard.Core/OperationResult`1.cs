@@ -1,4 +1,5 @@
-﻿namespace WheelWizard.Shared;
+using static WheelWizard.Core.OperationError;
+namespace WheelWizard.Core;
 
 /// <summary>
 /// Represents the result of an operation.

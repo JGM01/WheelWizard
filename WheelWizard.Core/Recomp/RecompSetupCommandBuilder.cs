@@ -1,6 +1,4 @@
-using WheelWizard.Recomp.Domain;
-
-namespace WheelWizard.Recomp;
+namespace WheelWizard.Core.Recomp;
 
 /// <summary>
 /// Builds the command lines described by the WheelWizard-Recomp integration contract.
@@ -115,7 +113,7 @@ public static class RecompSetupCommandBuilder
     private static string RetroWfcPayloadArgument(RecompRetroWfcPayloadMode mode) =>
         mode == RecompRetroWfcPayloadMode.Skip ? "--skip-retro-wfc-payload" : "--download-retro-wfc-payload";
 
-    // The recomp is Windows only, so quoting is always Windows quoting (never the POSIX form EnvHelper would pick).
+    // This setup contract targets Windows, so quoting is always Windows quoting, never POSIX quoting.
     private static string Quote(string path)
     {
         var value = path.Trim();

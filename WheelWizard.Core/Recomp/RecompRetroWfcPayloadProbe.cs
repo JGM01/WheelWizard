@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 
-namespace WheelWizard.Recomp;
+namespace WheelWizard.Core.Recomp;
 
 /// <summary>
 /// Answers whether the shared Retro-WFC payload can currently be downloaded. The setup host is the only
@@ -10,8 +10,8 @@ namespace WheelWizard.Recomp;
 public interface IRecompRetroWfcPayloadProbe
 {
     /// <summary>
-    /// True when the payload endpoint answered with a success status. Never throws: any failure, including
-    /// a timeout, simply reads as unreachable.
+    /// True when the payload endpoint answered with a success status. Failures, including a timeout,
+    /// read as unreachable. Caller cancellation propagates.
     /// </summary>
     Task<bool> IsReachableAsync(CancellationToken cancellationToken = default);
 }

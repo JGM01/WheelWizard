@@ -41,6 +41,8 @@ The fresh installer refuses an existing managed RR directory, including an incom
 
 `WheelWizard.Core` is the frontend-agnostic backend. Besides `RetroRewindPackage` (URL/version parsing, download, safe extraction, package validation) and `RuntimeConfiguration` (file access, conversions and preservation of unrelated TOML lines), its `Recomp` namespace owns the native product lifecycle (`ProductWorkflow`): preflight, product readiness against persisted receipts, building, transactional publication, runtime configuration and launching, plus `ChildProcess` for running the tools and game. Avalonia's fresh install and archive extraction call the package service; its settings manager and setting value adapter use the configuration service. UI dialogs, save migration, publication into Avalonia's directories and incremental-update orchestration remain in Avalonia.
 
+Core also owns the Windows release-based setup contract and helpers in `WheelWizard.Core.Recomp`: install/product models, command construction, output parsing, version/release selection, setup downloading, and the Retro-WFC payload probe and policy. The existing framework consumes these services directly; its DI configuration, process runner, install orchestration, status mapping and dialogs remain there. This extraction does not change the native source-build workflow or Host protocol. Shared result types and translation IDs live in `WheelWizard.Core`, with GitHub release/asset DTOs in `WheelWizard.Core.GitHub`; translation text and popup rendering remain in the framework. Existing C# callers must use these new namespaces.
+
 `WheelWizard.Host` is a thin transport over `WheelWizard.Core.Recomp.ProductWorkflow`: it owns process lifetime and the protocol framing. Protocol version 1 is UTF-8 newline-delimited JSON on stdin/stdout; diagnostics use stderr. Every request requires a unique `id`. Only one operation is accepted at a time; `cancel` remains available. EOF or SIGTERM cancels owned work. There is no HTTP listener.
 
 Example request (one line):
@@ -69,3 +71,7 @@ python3 macos/Native/demo.py /path/WiiCompiled '/path/Game.wbfs' launch:base lau
 ```
 
 Omit `install` if the managed RR package is already installed. `--stop-after` is a startup probe using cancellation; it does **not** establish normal exit or race acceptance. Without it, close the game normally to continue. Operation logs include exact runtime paths and build stage output. See [ACCEPTANCE.md](ACCEPTANCE.md) for actual results and remaining manual checks.
+
+## Feature follow-up
+
+Investigate a native **mod conflict preview** showing which mod supplies each overlapping launch file. The framework's `ModsLaunchService` already computes winners from mod priority; a future extraction could expose those decisions before copying. UI behavior, archive-level conflicts, and the exact preview scope still need product decisions. No preview support is included in the setup-backend extraction.

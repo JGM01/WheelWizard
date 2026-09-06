@@ -1,4 +1,5 @@
-﻿using WheelWizard.GitHub.Domain;
+using WheelWizard.Core.GitHub;
+using WheelWizard.GitHub.Domain;
 using WheelWizard.Shared.Services;
 
 namespace WheelWizard.GitHub;

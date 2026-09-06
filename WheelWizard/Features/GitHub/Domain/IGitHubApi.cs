@@ -1,4 +1,5 @@
-﻿using Refit;
+using WheelWizard.Core.GitHub;
+using Refit;
 
 namespace WheelWizard.GitHub.Domain;
 

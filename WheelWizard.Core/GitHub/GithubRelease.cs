@@ -1,4 +1,4 @@
-﻿namespace WheelWizard.GitHub.Domain;
+namespace WheelWizard.Core.GitHub;
 
 public class GithubRelease
 {

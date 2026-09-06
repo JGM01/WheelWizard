@@ -1,3 +1,4 @@
+using WheelWizard.Core.Recomp;
 using System.Net.Http.Headers;
 using WheelWizard.Shared;
 
@@ -7,7 +8,7 @@ public static class RecompExtensions
 {
     /// <summary>
     /// Registers the Mario Kart Wii recomp frontend.
-    /// The recomp only ships for Windows, so on every other platform nothing is registered at all;
+    /// This release-based setup integration targets Windows, so other platforms register none of these services;
     /// <c>ISettingsManager.IsRecompModeActive()</c> is false there, so nothing ever resolves these.
     /// </summary>
     public static IServiceCollection AddRecomp(this IServiceCollection services)

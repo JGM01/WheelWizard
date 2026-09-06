@@ -1,7 +1,7 @@
 using WheelWizard.CustomDistributions;
 using WheelWizard.Models.Enums;
 using WheelWizard.Mods;
-using WheelWizard.Recomp.Domain;
+using WheelWizard.Core.Recomp;
 using WheelWizard.Services;
 using WheelWizard.Services.Launcher;
 using WheelWizard.Views.Popups.Generic;

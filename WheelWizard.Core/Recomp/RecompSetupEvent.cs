@@ -1,4 +1,4 @@
-namespace WheelWizard.Recomp.Domain;
+namespace WheelWizard.Core.Recomp;
 
 /// <summary>
 /// A single line of the NDJSON stream that the recomp setup executable writes when run with <c>--progress-json</c>.

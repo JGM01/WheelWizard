@@ -1,5 +1,5 @@
 using WheelWizard.Models.Enums;
-using WheelWizard.Recomp.Domain;
+using WheelWizard.Core.Recomp;
 
 namespace WheelWizard.Recomp;
 

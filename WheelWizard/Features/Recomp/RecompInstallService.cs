@@ -1,9 +1,9 @@
-﻿using System.IO.Abstractions;
+using System.IO.Abstractions;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using WheelWizard.GitHub;
 using WheelWizard.Models.Enums;
-using WheelWizard.Recomp.Domain;
+using WheelWizard.Core.Recomp;
 
 namespace WheelWizard.Recomp;
 

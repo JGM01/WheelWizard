@@ -1,4 +1,5 @@
-﻿using Avalonia.Threading;
+using WheelWizard.Core.GitHub;
+using Avalonia.Threading;
 using Semver;
 using WheelWizard.Branding;
 using WheelWizard.GitHub.Domain;

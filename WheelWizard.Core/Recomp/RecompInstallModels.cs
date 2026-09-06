@@ -1,6 +1,6 @@
 using Semver;
 
-namespace WheelWizard.Recomp.Domain;
+namespace WheelWizard.Core.Recomp;
 
 /// <summary>
 /// UI progress update produced while installing or updating the recomp.

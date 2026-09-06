@@ -1,8 +1,8 @@
-﻿using System.Diagnostics.CodeAnalysis;
+using static WheelWizard.Core.OperationError;
+using System.Diagnostics.CodeAnalysis;
 using Serilog;
-using WheelWizard.Shared.MessageTranslations;
 
-namespace WheelWizard.Shared;
+namespace WheelWizard.Core;
 
 /// <summary>
 /// Represents the result of an operation.

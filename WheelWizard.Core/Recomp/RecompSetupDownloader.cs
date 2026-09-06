@@ -1,7 +1,9 @@
 using System.IO.Abstractions;
 using Microsoft.Extensions.Logging;
+using static WheelWizard.Core.OperationError;
+using static WheelWizard.Core.OperationResult;
 
-namespace WheelWizard.Recomp;
+namespace WheelWizard.Core.Recomp;
 
 /// <summary>
 /// Downloads the recomp setup executable from a GitHub release asset.
@@ -79,9 +81,8 @@ public sealed class RecompSetupDownloader(
                 }
             }
 
-            if (fileSystem.File.Exists(destinationFilePath))
-                fileSystem.File.Delete(destinationFilePath);
-            fileSystem.File.Move(partialFilePath, destinationFilePath);
+            // Publish the completed sibling without first deleting the previous executable.
+            fileSystem.File.Move(partialFilePath, destinationFilePath, overwrite: true);
 
             progress?.Report(100);
             return Ok();
