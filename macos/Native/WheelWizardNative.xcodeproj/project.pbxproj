@@ -1,18 +1,192 @@
 // !$*UTF8*$!
 {
- archiveVersion = 1; classes = {}; objectVersion = 56;
- objects = {
-  A00000000000000000000001 = {isa = PBXProject; attributes = {LastUpgradeCheck = 1600;}; buildConfigurationList = A00000000000000000000002; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; knownRegions = (en, Base); mainGroup = A00000000000000000000003; productRefGroup = A00000000000000000000004; projectDirPath = ""; projectRoot = ""; targets = (A00000000000000000000005);};
-  A00000000000000000000002 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000006); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;};
-  A00000000000000000000003 = {isa = PBXGroup; children = (A00000000000000000000007, A00000000000000000000004); sourceTree = "<group>";};
-  A00000000000000000000004 = {isa = PBXGroup; children = (A00000000000000000000008); name = Products; sourceTree = "<group>";};
-  A00000000000000000000005 = {isa = PBXNativeTarget; buildConfigurationList = A00000000000000000000009; buildPhases = (A0000000000000000000000A); buildRules = (); dependencies = (); name = WheelWizardNative; productName = WheelWizardNative; productReference = A00000000000000000000008; productType = "com.apple.product-type.application";};
-  A00000000000000000000006 = {isa = XCBuildConfiguration; buildSettings = {MACOSX_DEPLOYMENT_TARGET = 14.0; SDKROOT = macosx; SWIFT_VERSION = 5.0; ARCHS = arm64;}; name = Release;};
-  A00000000000000000000007 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WheelWizardNative.swift; sourceTree = "<group>";};
-  A00000000000000000000008 = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WheelWizardNative.app; sourceTree = BUILT_PRODUCTS_DIR;};
-  A00000000000000000000009 = {isa = XCConfigurationList; buildConfigurations = (A0000000000000000000000B); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;};
-  A0000000000000000000000A = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A0000000000000000000000C); runOnlyForDeploymentPostprocessing = 0;};
-  A0000000000000000000000B = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_IDENTITY = "-"; CODE_SIGN_STYLE = Manual; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = WheelWizard; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games"; PRODUCT_BUNDLE_IDENTIFIER = org.wheelwizard.native; PRODUCT_NAME = "$(TARGET_NAME)"; MARKETING_VERSION = 0.1.0; CURRENT_PROJECT_VERSION = 1; ENABLE_APP_SANDBOX = NO; SWIFT_EMIT_LOC_STRINGS = YES;}; name = Release;};
-  A0000000000000000000000C = {isa = PBXBuildFile; fileRef = A00000000000000000000007;};
- }; rootObject = A00000000000000000000001;
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		F000000000000000000000A0 /* WheelWizardApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000010 /* WheelWizardApp.swift */; };
+		F000000000000000000000A1 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000011 /* AppDelegate.swift */; };
+		F000000000000000000000A2 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000020 /* Models.swift */; };
+		F000000000000000000000A3 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000021 /* Session.swift */; };
+		F000000000000000000000A4 /* Activity.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000022 /* Activity.swift */; };
+		F000000000000000000000A5 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000030 /* ContentView.swift */; };
+		F000000000000000000000A6 /* ProductDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000031 /* ProductDetailView.swift */; };
+		F000000000000000000000A7 /* StatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000032 /* StatusView.swift */; };
+		F000000000000000000000A8 /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000033 /* SetupView.swift */; };
+		F000000000000000000000A9 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000034 /* SettingsView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		F00000000000000000000010 /* WheelWizardApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WheelWizardApp.swift; sourceTree = "<group>"; };
+		F00000000000000000000011 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		F00000000000000000000020 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		F00000000000000000000021 /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
+		F00000000000000000000022 /* Activity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Activity.swift; sourceTree = "<group>"; };
+		F00000000000000000000030 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		F00000000000000000000031 /* ProductDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductDetailView.swift; sourceTree = "<group>"; };
+		F00000000000000000000032 /* StatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusView.swift; sourceTree = "<group>"; };
+		F00000000000000000000033 /* SetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
+		F00000000000000000000034 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A00000000000000000000008 /* WheelWizardNative.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WheelWizardNative.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		A00000000000000000000003 = {
+			isa = PBXGroup;
+			children = (
+				F00000000000000000000010 /* WheelWizardApp.swift */,
+				F00000000000000000000011 /* AppDelegate.swift */,
+				F000000000000000000000B0 /* Models */,
+				F000000000000000000000B1 /* Views */,
+				A00000000000000000000004 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A00000000000000000000004 = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000008 /* WheelWizardNative.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		F000000000000000000000B0 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				F00000000000000000000020 /* Models.swift */,
+				F00000000000000000000021 /* Session.swift */,
+				F00000000000000000000022 /* Activity.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		F000000000000000000000B1 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				F00000000000000000000030 /* ContentView.swift */,
+				F00000000000000000000031 /* ProductDetailView.swift */,
+				F00000000000000000000032 /* StatusView.swift */,
+				F00000000000000000000033 /* SetupView.swift */,
+				F00000000000000000000034 /* SettingsView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A00000000000000000000005 /* WheelWizardNative */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00000000000000000000009 /* Build configuration list for PBXNativeTarget "WheelWizardNative" */;
+			buildPhases = (
+				A0000000000000000000000A /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = WheelWizardNative;
+			productName = WheelWizardNative;
+			productReference = A00000000000000000000008 /* WheelWizardNative.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A00000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 1600;
+			};
+			buildConfigurationList = A00000000000000000000002 /* Build configuration list for PBXProject "WheelWizardNative" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A00000000000000000000003;
+			productRefGroup = A00000000000000000000004 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A00000000000000000000005 /* WheelWizardNative */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A0000000000000000000000A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F000000000000000000000A9 /* SettingsView.swift in Sources */,
+				F000000000000000000000A8 /* SetupView.swift in Sources */,
+				F000000000000000000000A7 /* StatusView.swift in Sources */,
+				F000000000000000000000A6 /* ProductDetailView.swift in Sources */,
+				F000000000000000000000A5 /* ContentView.swift in Sources */,
+				F000000000000000000000A4 /* Activity.swift in Sources */,
+				F000000000000000000000A3 /* Session.swift in Sources */,
+				F000000000000000000000A2 /* Models.swift in Sources */,
+				F000000000000000000000A1 /* AppDelegate.swift in Sources */,
+				F000000000000000000000A0 /* WheelWizardApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A00000000000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		A0000000000000000000000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = WheelWizard;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.wheelwizard.native;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A00000000000000000000002 /* Build configuration list for PBXProject "WheelWizardNative" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000006 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A00000000000000000000009 /* Build configuration list for PBXNativeTarget "WheelWizardNative" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A0000000000000000000000B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A00000000000000000000001 /* Project object */;
 }

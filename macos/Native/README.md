@@ -4,7 +4,7 @@ An Apple Silicon SwiftUI frontend with one bundled C# helper per session. Game e
 
 ## Build and run
 
-Prerequisites: Apple Silicon macOS 14+, selected Xcode with its command-line tools, .NET 10 SDK plus the SDK required by your WiiCompiled checkout, CMake and Ninja (normally Homebrew), an existing WiiCompiled checkout, and a clean PAL RMCP01 WBFS. Toolchain installation is outside this MVP. The build script uses the selected checkout's translator and native toolchain and modifies its generated caches and extracted `Assets` directory.
+Prerequisites: Apple Silicon macOS 26+, selected Xcode with its command-line tools, .NET 10 SDK plus the SDK required by your WiiCompiled checkout, CMake and Ninja (normally Homebrew), an existing WiiCompiled checkout, and a clean PAL RMCP01 WBFS. Toolchain installation is outside this MVP. The build script uses the selected checkout's translator and native toolchain and modifies its generated caches and extracted `Assets` directory.
 
 From the WheelWizard repository:
 
