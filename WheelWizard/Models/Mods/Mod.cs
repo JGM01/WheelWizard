@@ -1,7 +1,6 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using IniParser;
-using IniParser.Model;
+using WheelWizard.Core.Mods;
 
 namespace WheelWizard.Models.Mods;
 
@@ -17,79 +16,37 @@ public class Mod : INotifyPropertyChanged
     public bool IsEnabled
     {
         get => _isEnabled;
-        set
-        {
-            if (_isEnabled == value)
-                return;
-
-            _isEnabled = value;
-            OnPropertyChanged(nameof(IsEnabled));
-        }
+        set => SetField(ref _isEnabled, value);
     }
 
     public string Title
     {
         get => _title;
-        set
-        {
-            if (_title == value)
-                return;
-
-            _title = value;
-            OnPropertyChanged(nameof(Title));
-        }
+        set => SetField(ref _title, value);
     }
 
     public string Author
     {
         get => _author;
-        set
-        {
-            if (_author == value)
-                return;
-
-            _author = value;
-            OnPropertyChanged(nameof(Author));
-        }
+        set => SetField(ref _author, value);
     }
 
     public int ModID
     {
         get => _modID;
-        set
-        {
-            if (_modID == value)
-                return;
-
-            _modID = value;
-            OnPropertyChanged(nameof(ModID));
-        }
+        set => SetField(ref _modID, value);
     }
 
     public int Priority
     {
         get => _priority;
-        set
-        {
-            if (_priority == value)
-                return;
-
-            _priority = value;
-            OnPropertyChanged(nameof(Priority));
-        }
+        set => SetField(ref _priority, value);
     }
 
     public bool HasIncompatibleFiles
     {
         get => _hasIncompatibleFiles;
-        set
-        {
-            if (_hasIncompatibleFiles == value)
-                return;
-
-            _hasIncompatibleFiles = value;
-            OnPropertyChanged(nameof(HasIncompatibleFiles));
-        }
+        set => SetField(ref _hasIncompatibleFiles, value);
     }
 
     protected bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
@@ -101,57 +58,27 @@ public class Mod : INotifyPropertyChanged
         return true;
     }
 
-    /// <summary>
-    /// Loads the mod details from an INI file.
-    /// </summary>
-    public static async Task<Mod> LoadFromIniAsync(string iniFilePath)
-    {
-        var parser = new FileIniDataParser();
-        IniData data;
-        try
-        {
-            data = parser.ReadFile(iniFilePath);
-        }
-        catch (Exception ex)
-        {
-            throw new($"Failed to read INI file '{iniFilePath}': {ex.Message}");
-        }
+    public ModMetadata ToMetadata() => new(Title, Author, ModID, IsEnabled, Priority);
 
-        var mod = new Mod
+    public static Mod FromMetadata(ModMetadata value) =>
+        new()
         {
-            Title = data["Mod"]["Name"],
-            Author = data["Mod"]["Author"],
-            ModID = int.TryParse(data["Mod"]["ModID"], out var id) ? id : -1,
-            IsEnabled = bool.TryParse(data["Mod"]["IsEnabled"], out var enabled) ? enabled : true,
-            Priority = int.TryParse(data["Mod"]["Priority"], out var priority) ? priority : 0,
+            Title = value.Title,
+            Author = value.Author,
+            ModID = value.ModID,
+            IsEnabled = value.IsEnabled,
+            Priority = value.Priority,
         };
 
-        return await Task.FromResult(mod);
-    }
+    /// <summary>Loads the mod details from an INI file.</summary>
+    public static async Task<Mod> LoadFromIniAsync(string iniFilePath) =>
+        await Task.FromResult(FromMetadata(ModMetadataFile.Load(iniFilePath)));
 
-    /// <summary>
-    /// Saves the mod details to an INI file.
-    /// </summary>
-    //todo: reevaluate if the mod class should be responsible for saving itself to an INI file
+    /// <summary>Saves the mod details to an INI file.</summary>
+    // Persistence lives in Core; retain this method for existing bound-model callers.
     public async Task SaveToIniAsync(string iniFilePath)
     {
-        var parser = new FileIniDataParser();
-        var data = new IniData();
-        data["Mod"]["Name"] = this.Title;
-        data["Mod"]["Author"] = this.Author;
-        data["Mod"]["ModID"] = this.ModID.ToString();
-        data["Mod"]["IsEnabled"] = this.IsEnabled.ToString();
-        data["Mod"]["Priority"] = this.Priority.ToString();
-
-        try
-        {
-            parser.WriteFile(iniFilePath, data);
-        }
-        catch (Exception ex)
-        {
-            throw new($"Failed to write INI file '{iniFilePath}': {ex.Message}");
-        }
-
+        ModMetadataFile.Save(iniFilePath, ToMetadata());
         await Task.CompletedTask;
     }
 

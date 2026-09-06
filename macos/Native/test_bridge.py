@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Integration tests against the real bundled helper; run build.sh first."""
-import json, os, pathlib, queue, signal, subprocess, tempfile, threading, unittest, uuid
+import json, os, pathlib, queue, signal, subprocess, tempfile, threading, unittest, uuid, zipfile
 HELPER = pathlib.Path(__file__).resolve().parent / 'artifacts/WheelWizardNative.app/Contents/Resources/helper/WheelWizard.Host'
 
 class BridgeTests(unittest.TestCase):
@@ -60,6 +60,7 @@ class BridgeTests(unittest.TestCase):
         build = self.send('build', product='base')
         self.until(lambda e: e['id'] == build and e['kind'] == 'progress')
         self.assertEqual('failure', self.result(self.send('config-write', settings={'volume': 0.9, 'resolutionMultiplier': 1}))['outcome'])
+        self.assertEqual('failure', self.result(self.send('mods-list'))['outcome'])
         self.send('cancel')
         self.assertEqual('cancelled', self.result(build)['outcome'])
         status = self.result(self.send('status'))
@@ -77,5 +78,71 @@ class BridgeTests(unittest.TestCase):
         self.child.wait(timeout=10)
         with self.assertRaises(ProcessLookupError): os.kill(pid, 0)
         self.assertEqual([], list((self.root / 'managed/Staging').iterdir()))
+
+    def test_mod_library_and_preview(self):
+        def archive(name, content):
+            path = self.root / (name + '.zip')
+            with zipfile.ZipFile(path, 'w') as z:
+                z.writestr('nested/course.bin', content)
+            return str(path)
+        def ok(command, **fields):
+            result = self.result(self.send(command, **fields))
+            self.assertEqual('success', result['outcome'], result)
+            return result['data']
+        self.assertEqual([], ok('mods-list')['mods'])
+        first = archive('first', 'first'); second = archive('second', 'second')
+        ok('mods-import', archivePath=first, modTitle='First')
+        state = ok('mods-import', archivePath=second, modTitle='Second')
+        self.assertEqual(['First', 'Second'], [m['title'] for m in state['mods']])
+        conflict = ok('mods-preview')['files'][0]
+        self.assertEqual('First', conflict['winner']['modTitle'])
+        self.assertEqual('Second', conflict['overwritten'][0]['modTitle'])
+        ok('mods-move', modTitle='Second', direction=-1)
+        self.assertEqual('Second', ok('mods-preview')['files'][0]['winner']['modTitle'])
+        ok('mods-enabled', modTitle='Second', enabled=False)
+        self.assertEqual([], ok('mods-preview')['files'][0]['overwritten'])
+        self.assertFalse(ok('mods-list')['mods'][0]['isEnabled'])
+        self.assertEqual('failure', self.result(self.send('mods-import', archivePath=first, modTitle='FIRST'))['outcome'])
+        self.assertEqual('failure', self.result(self.send('mods-remove', modTitle='../outside'))['outcome'])
+        self.assertEqual('failure', self.result(self.send('mods-enabled', modTitle='First'))['outcome'])
+        self.assertEqual('failure', self.result(self.send('mods-move', modTitle='First', direction=9))['outcome'])
+        ok('mods-remove', modTitle='Second')
+        self.assertEqual(['First'], [m['title'] for m in ok('mods-list')['mods']])
+        self.assertTrue(pathlib.Path(first).exists())
+        # A new library instance is loaded for each command; also verify persistence across helper processes.
+        self.child.stdin.close(); self.child.wait(timeout=10)
+        request = dict(version=1, id='restart', command='mods-list')
+        restarted = subprocess.Popen([str(HELPER)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, env={**os.environ, 'WHEELWIZARD_NATIVE_ROOT': str(self.root / 'managed')})
+        try:
+            restarted.stdin.write(json.dumps(request)+'\n'); restarted.stdin.flush()
+            while True:
+                terminal = json.loads(restarted.stdout.readline())
+                if terminal['kind'] == 'result': break
+            self.assertEqual('success', terminal['outcome'])
+            self.assertEqual('First', terminal['data']['mods'][0]['title'])
+        finally:
+            restarted.stdin.close(); restarted.wait(timeout=10)
+            restarted.stdout.close(); restarted.stderr.close()
+
+    def test_mod_import_traversal_and_cancellation(self):
+        bad = self.root / 'bad.zip'
+        with zipfile.ZipFile(bad, 'w') as archive:
+            archive.writestr('valid.bin', 'ok')
+            archive.writestr('../escaped', 'bad')
+        result = self.result(self.send('mods-import', archivePath=str(bad), modTitle='Bad'))
+        self.assertEqual('failure', result['outcome'])
+        self.assertEqual([], list((self.root / 'managed').glob('.ww-mod-*')))
+        large = self.root / 'large.zip'
+        block = bytes(4 * 1024 * 1024)
+        with zipfile.ZipFile(large, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+            for i in range(64): archive.writestr(str(i) + '.bin', block)
+        operation = self.send('mods-import', archivePath=str(large), modTitle='Cancelled')
+        self.until(lambda e: e['id'] == operation and e['kind'] == 'progress')
+        self.send('cancel')
+        self.assertEqual('cancelled', self.result(operation)['outcome'])
+        self.assertFalse((self.root / 'managed/Mods/Cancelled').exists())
+        self.assertEqual([], list((self.root / 'managed').glob('.ww-mod-*')))
+        self.assertEqual('success', self.result(self.send('mods-list'))['outcome'])
 
 if __name__ == '__main__': unittest.main()

@@ -62,7 +62,6 @@ public interface IModManager : INotifyPropertyChanged
 
 public sealed class ModManager : IModManager
 {
-    private static readonly char[] _illegalChars = new[] { '.', '/', '~', '\\' };
     private readonly IModInstallationService _modInstallationService;
     private readonly IModPatchConversionService _modPatchConversionService;
     private readonly SemaphoreSlim _saveSemaphore = new(1, 1);
@@ -240,11 +239,14 @@ public sealed class ModManager : IModManager
         if (_modInstallationService.ContainsModByTitle(Mods, newName))
             return Fail("Mod name already exists.");
 
-        if (newName.IndexOfAny(Path.GetInvalidFileNameChars()) != -1)
-            return Fail("Mod name contains illegal characters.");
-
-        if (newName.Any(x => _illegalChars.Contains(x)))
-            return Fail("Mod name contains illegal characters.");
+        try
+        {
+            WheelWizard.Core.Mods.ModLibrary.ValidateName(newName);
+        }
+        catch (ArgumentException ex)
+        {
+            return Fail(ex.Message);
+        }
 
         return Ok();
     }
@@ -510,41 +512,7 @@ public sealed class ModManager : IModManager
     {
         try
         {
-            var modsRoot = Path.GetFullPath(PathManager.ModsFolderPath)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-            var target = Path.GetFullPath(modDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-            var relativePath = Path.GetRelativePath(modsRoot, target);
-
-            if (
-                relativePath == "."
-                || relativePath == ".."
-                || relativePath.StartsWith(".." + Path.DirectorySeparatorChar)
-                || relativePath.StartsWith(".." + Path.AltDirectorySeparatorChar)
-                || Path.IsPathRooted(relativePath)
-            )
-            {
-                return Fail("Invalid mod directory.");
-            }
-
-            if (!Directory.Exists(target))
-                return Fail("Mod directory does not exist.");
-
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-
-            var di = new DirectoryInfo(target);
-
-            foreach (var dir in di.EnumerateDirectories("*", SearchOption.AllDirectories))
-                dir.Attributes &= ~FileAttributes.ReadOnly;
-
-            foreach (var file in di.EnumerateFiles("*", SearchOption.AllDirectories))
-                file.Attributes &= ~FileAttributes.ReadOnly;
-
-            di.Attributes &= ~FileAttributes.ReadOnly;
-
-            Directory.Delete(target, true);
+            WheelWizard.Core.Mods.ModLibrary.DeleteDirectory(PathManager.ModsFolderPath, modDirectory);
             return Ok();
         }
         catch (Exception ex)

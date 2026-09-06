@@ -15,6 +15,11 @@ final class Session: ObservableObject {
     @Published var busy = false
     @Published var connected = false
 
+    @Published var mods = [ManagedMod]()
+    @Published var modPreview: [ModLaunchFile]?
+    @Published var modsLoaded = false
+    private var wantsModsRefresh = false
+
     let activity = Activity()
 
     var quitWhenIdle = false
@@ -128,6 +133,9 @@ final class Session: ObservableObject {
         pending.removeAll()
         pendingDomain.removeAll()
         domainResults.removeAll()
+        modsLoaded = false
+        modPreview = nil
+        wantsModsRefresh = false
         wantsPackageState = false
         packageStateFeedback = false
         input = nil
@@ -228,6 +236,7 @@ final class Session: ObservableObject {
             ]
             var data = try JSONSerialization.data(withJSONObject: request)
             data.append(10)
+            busy = true
             pending[id] = "package-state"
             pendingDomain[id] = "retro-rewind"
             try input.write(contentsOf: data)
@@ -255,7 +264,7 @@ final class Session: ObservableObject {
         send("config-write")
     }
 
-    func send(_ command: String, product: String? = nil, domain: String? = nil) {
+    func send(_ command: String, product: String? = nil, domain: String? = nil, fields: [String: Any] = [:]) {
         guard connected, let input, (!busy || command == "cancel") else { return }
         let id = UUID().uuidString
         do {
@@ -265,6 +274,7 @@ final class Session: ObservableObject {
                 "command": command,
                 "setup": try JSONSerialization.jsonObject(with: JSONEncoder().encode(setup)),
             ]
+            request.merge(fields) { _, supplied in supplied }
             if let product {
                 request["product"] = product
             }
@@ -334,6 +344,9 @@ final class Session: ObservableObject {
             activity.message = text
             activity.append(text)
             setResult(domain, text)
+            if command.hasPrefix("mods-") && command != "mods-list" && command != "mods-preview" {
+                wantsModsRefresh = true
+            }
             if command == "launch" {
                 send("config-read")
             }
@@ -348,6 +361,21 @@ final class Session: ObservableObject {
             }
             if let package = payload["package"] as? [String: Any] {
                 updatePackage(package)
+            }
+            if command.hasPrefix("mods-") {
+                do {
+                    if command == "mods-preview" {
+                        let data = try JSONSerialization.data(withJSONObject: payload["files"] ?? [])
+                        modPreview = try JSONDecoder().decode([ModLaunchFile].self, from: data)
+                    } else {
+                        let data = try JSONSerialization.data(withJSONObject: payload["mods"] ?? [])
+                        mods = try JSONDecoder().decode([ManagedMod].self, from: data)
+                        modsLoaded = true
+                    }
+                    if command != "mods-list" { setResult("mods", "") }
+                } catch {
+                    setResult("mods", "Could not read mod results: \(error.localizedDescription)")
+                }
             }
             switch command {
             case "preflight":
@@ -418,6 +446,10 @@ final class Session: ObservableObject {
                 break
             }
         }
+        if wantsModsRefresh && !busy && connected {
+            wantsModsRefresh = false
+            send("mods-list", domain: "mods")
+        }
         if wantsPackageState && !busy {
             wantsPackageState = false
             requestPackageState(feedback: false)
@@ -426,6 +458,23 @@ final class Session: ObservableObject {
             try? input?.close()
             NSApp.reply(toApplicationShouldTerminate: true)
         }
+    }
+
+    func refreshMods() {
+        domainResults["mods"] = ""
+        modPreview = nil
+        if busy {
+            wantsModsRefresh = true
+        } else {
+            send("mods-list", domain: "mods")
+        }
+    }
+
+    func modCommand(_ command: String, fields: [String: Any] = [:]) {
+        guard connected, !busy else { return }
+        modPreview = nil
+        domainResults["mods"] = ""
+        send(command, domain: "mods", fields: fields)
     }
 
     func updatePackage(_ value: [String: Any]) {

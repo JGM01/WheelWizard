@@ -3,6 +3,7 @@ import SwiftUI
 enum NavigationItem: Hashable {
     case product(Product.ID)
     case logs
+    case mods
 }
 
 struct ContentView: View {
@@ -31,6 +32,8 @@ struct ContentView: View {
                 }
             }
             Section("Tools") {
+                Label("Mods", systemImage: "shippingbox")
+                    .tag(NavigationItem.mods)
                 Label("Activity Log", systemImage: "terminal")
                     .tag(NavigationItem.logs)
             }
@@ -49,6 +52,8 @@ struct ContentView: View {
                 } else {
                     emptyState
                 }
+            case .mods:
+                ModsView()
             case .logs:
                 LogPane()
             case .none:

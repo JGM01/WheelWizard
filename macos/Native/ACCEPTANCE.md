@@ -58,3 +58,18 @@ python3 macos/Native/demo.py /path/to/WiiCompiled '/path/to/Game.wbfs' launch:re
 **29 core/workflow tests, 210 Avalonia tests, and 3 bundled-helper bridge tests passed.**
 
 Core/workflow tests cover package parsing, archive traversal, download failure/cancellation, malformed configuration preservation, conversion, process arguments/output/cancellation, publication rollback and product identity. The existing Avalonia suite passes with shared-service adapter regression tests. The bundled-helper bridge suite passes all three tests, including malformed protocol recovery, self-contained execution, busy rejection, cancellation and SIGTERM cleanup. Reproduce with the commands in [README.md](README.md).
+
+## Mod library and preview extraction (2026-09-06)
+
+**97 Core tests, 204 framework tests, and 5 bundled-helper bridge tests passed.** The native app built and passed ad-hoc signature verification; the Windows framework configuration also built. ZIP and 7z import fixtures were exercised; RAR remains supported by the existing SharpCompress reader but was not independently fixture-tested in this batch.
+
+Automated verification covers metadata/defaults, adapter notifications, staged import and cleanup, collision precedence, tagged archives, file copying, and helper library/preview commands. The bundled-helper tests exercise import, enabled state, ordering, removal, duplicate/invalid requests, traversal rejection, cancellation cleanup, busy rejection, and persistence across helper restarts. Native launch code does not apply the managed mod library.
+
+Manual UI acceptance remains to be recorded:
+
+- [ ] Import an archive through the native name sheet; confirm the new mod appears.
+- [ ] Toggle enabled state and move mods up/down; restart and verify saved state.
+- [ ] Preview overlapping files; inspect winner/overwritten sources and the All Files toggle.
+- [ ] Confirm library edits invalidate the preview; exercise empty/no-conflict/error states.
+- [ ] Cancel and confirm removal in separate attempts; confirm the source archive remains.
+- [ ] Confirm the native Play limitation is visible and existing game launch behavior is unchanged.

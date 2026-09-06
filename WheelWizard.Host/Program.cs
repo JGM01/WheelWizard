@@ -1,4 +1,5 @@
 using System.Text.Json;
+using WheelWizard.Core.Mods;
 using WheelWizard.Core.Recomp;
 using WheelWizard.Host;
 
@@ -6,6 +7,7 @@ var root =
     Environment.GetEnvironmentVariable("WHEELWIZARD_NATIVE_ROOT")
     ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library/Application Support/WheelWizardNative");
 var workflow = new ProductWorkflow(root, Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../tools")));
+var mods = new ModLibrary(Path.Combine(root, "Mods"));
 Directory.CreateDirectory(workflow.Logs);
 var outputLock = new object();
 void Send(HostEvent value)
@@ -77,6 +79,39 @@ try
                     object? result;
                     switch (req.Command)
                     {
+                        case "mods-list":
+                            result = new { mods = mods.Load(ct) };
+                            break;
+                        case "mods-import":
+                            await mods.ImportNext(
+                                req.ArchivePath ?? throw new ArgumentException("archivePath required"),
+                                req.ModTitle ?? throw new ArgumentException("modTitle required"),
+                                new ModEventProgress(update => Emit("progress", new { stage = update.Stage, percent = update.Percent })),
+                                ct
+                            );
+                            result = new { mods = mods.Load() };
+                            break;
+                        case "mods-enabled":
+                            mods.SetEnabled(
+                                req.ModTitle ?? throw new ArgumentException("modTitle required"),
+                                req.Enabled ?? throw new ArgumentException("enabled required")
+                            );
+                            result = new { mods = mods.Load() };
+                            break;
+                        case "mods-move":
+                            mods.Move(
+                                req.ModTitle ?? throw new ArgumentException("modTitle required"),
+                                req.Direction ?? throw new ArgumentException("direction required")
+                            );
+                            result = new { mods = mods.Load() };
+                            break;
+                        case "mods-remove":
+                            mods.Remove(req.ModTitle ?? throw new ArgumentException("modTitle required"));
+                            result = new { mods = mods.Load() };
+                            break;
+                        case "mods-preview":
+                            result = ModLaunchPlanner.Build(mods.Root, mods.Load(ct), ct);
+                            break;
                         case "preflight":
                             result = new { setup, errors = workflow.Preflight(setup) };
                             break;
@@ -102,19 +137,11 @@ try
                             break;
                         case "package-update":
                             await workflow.UpdateRR(setup, Emit, ct);
-                            result = new
-                            {
-                                products = await workflow.Status(setup, ct),
-                                package = workflow.PackageStatus(),
-                            };
+                            result = new { products = await workflow.Status(setup, ct), package = workflow.PackageStatus() };
                             break;
                         case "package-remove":
                             workflow.RemoveRR();
-                            result = new
-                            {
-                                products = await workflow.Status(setup, ct),
-                                package = workflow.PackageStatus(),
-                            };
+                            result = new { products = await workflow.Status(setup, ct), package = workflow.PackageStatus() };
                             break;
                         case "package-state":
                             result = await workflow.PackageState(ct);
@@ -146,14 +173,18 @@ try
                             throw new ArgumentException("Unknown command: " + req.Command);
                     }
                     lock (logLock)
-                        log.WriteLine(JsonSerializer.Serialize(new HostEvent(1, req.Id, "result", result, "success"), ProductWorkflow.Json));
+                        log.WriteLine(
+                            JsonSerializer.Serialize(new HostEvent(1, req.Id, "result", result, "success"), ProductWorkflow.Json)
+                        );
                     Interlocked.Exchange(ref occupied, 0);
                     Send(new(1, req.Id, "result", result, "success"));
                 }
                 catch (OperationCanceledException)
                 {
                     lock (logLock)
-                        log.WriteLine(JsonSerializer.Serialize(new HostEvent(1, req.Id, "result", Outcome: "cancelled"), ProductWorkflow.Json));
+                        log.WriteLine(
+                            JsonSerializer.Serialize(new HostEvent(1, req.Id, "result", Outcome: "cancelled"), ProductWorkflow.Json)
+                        );
                     Interlocked.Exchange(ref occupied, 0);
                     Send(new(1, req.Id, "result", Outcome: "cancelled"));
                 }
@@ -182,3 +213,9 @@ catch (OperationCanceledException) { }
 active?.Cancel();
 await running;
 active?.Dispose();
+
+// Synchronous reporting keeps progress events before the terminal result.
+sealed class ModEventProgress(Action<ModProgress> report) : IProgress<ModProgress>
+{
+    public void Report(ModProgress value) => report(value);
+}

@@ -72,6 +72,12 @@ python3 macos/Native/demo.py /path/WiiCompiled '/path/Game.wbfs' launch:base lau
 
 Omit `install` if the managed RR package is already installed. `--stop-after` is a startup probe using cancellation; it does **not** establish normal exit or race acceptance. Without it, close the game normally to continue. Operation logs include exact runtime paths and build stage output. See [ACCEPTANCE.md](ACCEPTANCE.md) for actual results and remaining manual checks.
 
-## Feature follow-up
+## Managed mods and file preview
 
-Investigate a native **mod conflict preview** showing which mod supplies each overlapping launch file. The framework's `ModsLaunchService` already computes winners from mod priority; a future extraction could expose those decisions before copying. UI behavior, archive-level conflicts, and the exact preview scope still need product decisions. No preview support is included in the setup-backend extraction.
+The native **Mods** sidebar manages an isolated library under `WheelWizardNative/Mods`. Import a ZIP, 7z, or RAR archive, choose a name, enable/disable mods, move them up/down, or remove them with confirmation. Import stages content beside the library and publishes only after extraction and metadata writing succeed. Duplicate names and existing destinations are rejected. Failed/cancelled imports clean their staging directory.
+
+**Preview Conflicts** scans saved enabled states and priorities. Earlier mods win ordinary destination-file collisions; expand a row to inspect its winning and overwritten source paths. **All Files** also shows destinations without collisions. Tagged `.szs` archives retain priority prefixes and remain separate: the preview does not inspect archive-internal conflicts. Same-mod collisions follow the existing filesystem enumeration order. Refresh after external edits; changing the library invalidates the preview.
+
+**Native Play does not apply these mods yet.** The framework's launch service now uses the same Core planner and copier, while native game launch remains unchanged. The framework keeps its bound `Mod` adapter; plain metadata, INI persistence, archive installation, planning and copying live in `WheelWizard.Core.Mods`.
+
+Host protocol version 1 adds `mods-list`, `mods-import`, `mods-enabled`, `mods-move`, `mods-remove`, and `mods-preview`. Import takes `archivePath` and `modTitle`; enabled takes `modTitle` and `enabled`; move takes `modTitle` and `direction` (-1/up or 1/down); removal takes `modTitle`. List and mutations return `{mods:[...]}` with saved metadata. Preview returns `{files:[{destination,winner:{modTitle,sourcePath},overwritten:[...]}]}`. All commands share the helper's existing operation gate, logging and cancellation protocol. Mod commands require no configured game or toolchain.
