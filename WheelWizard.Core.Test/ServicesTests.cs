@@ -1,7 +1,7 @@
 using System.IO.Compression;
 using System.Net;
 using WheelWizard.Core;
-using WheelWizard.Host;
+using WheelWizard.Core.Recomp;
 
 namespace WheelWizard.Core.Test;
 
@@ -232,7 +232,7 @@ public sealed class ServicesTests : IDisposable
         File.WriteAllText(Path.Combine(target, "app"), "working");
         File.WriteAllText(Path.Combine(target, "receipt"), "old");
         File.WriteAllText(Path.Combine(stage, "app"), "new");
-        Assert.Throws<FileNotFoundException>(() => Workflow.Publish(stage, target, ["app", "receipt"]));
+        Assert.Throws<FileNotFoundException>(() => ProductWorkflow.Publish(stage, target, ["app", "receipt"]));
         Assert.Equal("working", File.ReadAllText(Path.Combine(target, "app")));
         Assert.Equal("old", File.ReadAllText(Path.Combine(target, "receipt")));
     }
@@ -242,7 +242,7 @@ public sealed class ServicesTests : IDisposable
     [InlineData("retro-rewind", "both", true)]
     public void BuildModes(string id, string profile, bool offline)
     {
-        var args = Workflow.BuildArguments(
+        var args = ProductWorkflow.BuildArguments(
             new("/game with spaces.wbfs", "/workspace with spaces", "/cmake", "/ninja", "/nodtool", "/translator"),
             id,
             root,

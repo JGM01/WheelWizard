@@ -29,7 +29,7 @@ Everything managed by this frontend lives under `~/Library/Application Support/W
 | `RetroRewind/RetroRewind6` and `RetroRewind/riivolution` | Fresh package, including its version and XML |
 | `Staging/<unique-operation>` | Downloads, extraction, build output and temporary files |
 | `Runtime/WiiCompiled.app`, `Runtime/RetroRewind.app` | Published products |
-| `Runtime/base.json`, `Runtime/retro-rewind.json` | Product receipts with WBFS SHA-256, RR Code.pul SHA-256, checkout path/revision and build mode |
+| `Runtime/base.json`, `Runtime/retro-rewind.json` | Product receipts with product id, WBFS SHA-256 and RR payload (`Code.pul`) SHA-256, checkout path/revision and build timestamp |
 | `Runtime/portable.txt`, `Runtime/UserData` | Shared managed runtime configuration, NAND, saves, caches and game logs |
 | `Logs/*.jsonl` | Full helper operation logs; the frontend retains only 500 lines |
 
@@ -39,9 +39,9 @@ The fresh installer refuses an existing managed RR directory, including an incom
 
 ## Shared services and protocol
 
-`WheelWizard.Core` contains `RetroRewindPackage` (URL/version parsing, download, safe extraction, package validation) and `RuntimeConfiguration` (file access, conversions and preservation of unrelated TOML lines). Avalonia's fresh install and archive extraction call this package service; its settings manager and setting value adapter use this configuration service. UI dialogs, save migration, publication into Avalonia's directories and incremental-update orchestration remain in Avalonia.
+`WheelWizard.Core` is the frontend-agnostic backend. Besides `RetroRewindPackage` (URL/version parsing, download, safe extraction, package validation) and `RuntimeConfiguration` (file access, conversions and preservation of unrelated TOML lines), its `Recomp` namespace owns the native product lifecycle (`ProductWorkflow`): preflight, product readiness against persisted receipts, building, transactional publication, runtime configuration and launching, plus `ChildProcess` for running the tools and game. Avalonia's fresh install and archive extraction call the package service; its settings manager and setting value adapter use the configuration service. UI dialogs, save migration, publication into Avalonia's directories and incremental-update orchestration remain in Avalonia.
 
-`WheelWizard.Host` owns the native workflow and process lifetime. Protocol version 1 is UTF-8 newline-delimited JSON on stdin/stdout; diagnostics use stderr. Every request requires a unique `id`. Only one operation is accepted at a time; `cancel` remains available. EOF or SIGTERM cancels owned work. There is no HTTP listener.
+`WheelWizard.Host` is a thin transport over `WheelWizard.Core.Recomp.ProductWorkflow`: it owns process lifetime and the protocol framing. Protocol version 1 is UTF-8 newline-delimited JSON on stdin/stdout; diagnostics use stderr. Every request requires a unique `id`. Only one operation is accepted at a time; `cancel` remains available. EOF or SIGTERM cancels owned work. There is no HTTP listener.
 
 Example request (one line):
 

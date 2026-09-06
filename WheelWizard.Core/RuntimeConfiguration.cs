@@ -187,7 +187,7 @@ public sealed class RuntimeConfiguration(IFileSystem files)
     }
 
     public RuntimeSettings ReadSettings(string path) =>
-        new(Number(path, "audio", "volume", 1), Number(path, "video", "resolution_multiplier", 1));
+        new(Number(path, RuntimeConfigKeys.Audio, RuntimeConfigKeys.Volume, 1), Number(path, RuntimeConfigKeys.Video, RuntimeConfigKeys.ResolutionMultiplier, 1));
 
     double Number(string path, string section, string key, double fallback) =>
         Read(path, section, key) is { } v ? (double)Parse(v, typeof(double)) : fallback;
@@ -205,7 +205,10 @@ public sealed class RuntimeConfiguration(IFileSystem files)
             throw new ArgumentException("Volume must be 0–1 and resolution multiplier 1–3");
         Write(
             path,
-            [new("audio", "volume", Format(settings.Volume)), new("video", "resolution_multiplier", Format(settings.ResolutionMultiplier))],
+            [
+                new(RuntimeConfigKeys.Audio, RuntimeConfigKeys.Volume, Format(settings.Volume)),
+                new(RuntimeConfigKeys.Video, RuntimeConfigKeys.ResolutionMultiplier, Format(settings.ResolutionMultiplier)),
+            ],
             true
         );
     }

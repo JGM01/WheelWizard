@@ -1,5 +1,5 @@
 using WheelWizard.Core;
-using WheelWizard.Host;
+using WheelWizard.Core.Recomp;
 
 namespace WheelWizard.Core.Test;
 
@@ -11,7 +11,7 @@ public sealed class WorkflowTests : IDisposable
 
     public void Dispose() => Directory.Delete(root, true);
 
-    async Task<(Workflow Flow, SetupInput Setup)> Fixture()
+    async Task<(ProductWorkflow Flow, SetupInput Setup)> Fixture()
     {
         var workspace = Path.Combine(root, "workspace");
         Directory.CreateDirectory(Path.Combine(workspace, "Launcher"));
@@ -28,7 +28,7 @@ public sealed class WorkflowTests : IDisposable
             }
         )
             Assert.Equal(0, await ChildProcess.Run("/usr/bin/git", args, workspace, (_, _) => { }, default));
-        var flow = new Workflow(Path.Combine(root, "managed"), root);
+        var flow = new ProductWorkflow(Path.Combine(root, "managed"), root);
         Directory.CreateDirectory(Path.Combine(flow.Package, "RetroRewind6/Binaries"));
         Directory.CreateDirectory(Path.Combine(flow.Package, "riivolution"));
         File.WriteAllText(Path.Combine(flow.Package, "RetroRewind6/Binaries/Code.pul"), "fixture code");

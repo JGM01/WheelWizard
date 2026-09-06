@@ -1,16 +1,17 @@
 using System.Text.Json;
+using WheelWizard.Core.Recomp;
 using WheelWizard.Host;
 
 var root =
     Environment.GetEnvironmentVariable("WHEELWIZARD_NATIVE_ROOT")
     ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library/Application Support/WheelWizardNative");
-var workflow = new Workflow(root, Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../tools")));
+var workflow = new ProductWorkflow(root, Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../tools")));
 Directory.CreateDirectory(workflow.Logs);
 var outputLock = new object();
 void Send(HostEvent value)
 {
     lock (outputLock)
-        Console.WriteLine(JsonSerializer.Serialize(value, Workflow.Json));
+        Console.WriteLine(JsonSerializer.Serialize(value, ProductWorkflow.Json));
 }
 CancellationTokenSource? active = null;
 Task running = Task.CompletedTask;
@@ -34,7 +35,7 @@ try
         Request? request = null;
         try
         {
-            request = JsonSerializer.Deserialize<Request>(line, Workflow.Json) ?? throw new FormatException("Empty request");
+            request = JsonSerializer.Deserialize<Request>(line, ProductWorkflow.Json) ?? throw new FormatException("Empty request");
             if (request.Version != 1 || string.IsNullOrWhiteSpace(request.Id))
                 throw new FormatException("Protocol version 1 and request ID required");
             if (!seen.Add(request.Id))
@@ -66,7 +67,7 @@ try
                 {
                     var ev = new HostEvent(1, req.Id, kind, data);
                     lock (logLock)
-                        log.WriteLine(JsonSerializer.Serialize(ev, Workflow.Json));
+                        log.WriteLine(JsonSerializer.Serialize(ev, ProductWorkflow.Json));
                     Send(ev);
                 }
                 try
@@ -126,14 +127,14 @@ try
                             throw new ArgumentException("Unknown command: " + req.Command);
                     }
                     lock (logLock)
-                        log.WriteLine(JsonSerializer.Serialize(new HostEvent(1, req.Id, "result", result, "success"), Workflow.Json));
+                        log.WriteLine(JsonSerializer.Serialize(new HostEvent(1, req.Id, "result", result, "success"), ProductWorkflow.Json));
                     Interlocked.Exchange(ref occupied, 0);
                     Send(new(1, req.Id, "result", result, "success"));
                 }
                 catch (OperationCanceledException)
                 {
                     lock (logLock)
-                        log.WriteLine(JsonSerializer.Serialize(new HostEvent(1, req.Id, "result", Outcome: "cancelled"), Workflow.Json));
+                        log.WriteLine(JsonSerializer.Serialize(new HostEvent(1, req.Id, "result", Outcome: "cancelled"), ProductWorkflow.Json));
                     Interlocked.Exchange(ref occupied, 0);
                     Send(new(1, req.Id, "result", Outcome: "cancelled"));
                 }
@@ -143,7 +144,7 @@ try
                         log.WriteLine(
                             JsonSerializer.Serialize(
                                 new HostEvent(1, req.Id, "result", Outcome: "failure", Error: e.ToString()),
-                                Workflow.Json
+                                ProductWorkflow.Json
                             )
                         );
                     Console.Error.WriteLine(e);

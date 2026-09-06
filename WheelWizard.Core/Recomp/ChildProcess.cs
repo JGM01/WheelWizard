@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace WheelWizard.Host;
+namespace WheelWizard.Core.Recomp;
 
 public static class ChildProcess
 {

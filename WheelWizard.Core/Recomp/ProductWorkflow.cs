@@ -1,11 +1,15 @@
 using System.IO.Abstractions;
 using System.Security.Cryptography;
 using System.Text.Json;
-using WheelWizard.Core;
 
-namespace WheelWizard.Host;
+namespace WheelWizard.Core.Recomp;
 
-public sealed class Workflow(string root, string toolsDirectory)
+// Owns the native recomp product lifecycle: resolving build inputs, preflight checks,
+// status against persisted receipts, Retro Rewind package install, building and
+// publishing the product apps, runtime configuration and launching. It is a pure
+// frontend-agnostic service; WheelWizard.Host is only the protocol transport in front
+// of it.
+public sealed class ProductWorkflow(string root, string toolsDirectory)
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     public string Root => root;
@@ -14,17 +18,13 @@ public sealed class Workflow(string root, string toolsDirectory)
     public string Package => Path.Combine(root, "RetroRewind");
     public string Logs => Path.Combine(root, "Logs");
     readonly RuntimeConfiguration config = new(new Testably.Abstractions.RealFileSystem());
-    static readonly (string Id, string Name, string App)[] Products =
-    [
-        ("base", "Mario Kart Wii", "WiiCompiled"),
-        ("retro-rewind", "Retro Rewind", "RetroRewind"),
-    ];
 
-    static string App(string id) => Products.FirstOrDefault(p => p.Id == id).App ?? throw new ArgumentException("Unknown product");
+    static Product ProductFor(string id) => RecompProducts.ById(id);
 
-    string Executable(string id) => Path.Combine(Runtime, App(id) + ".app", "Contents", "MacOS", App(id));
+    string Executable(Product product) =>
+        Path.Combine(Runtime, product.App + ".app", "Contents", "MacOS", product.App);
 
-    string Receipt(string id) => Path.Combine(Runtime, id + ".json");
+    string Receipt(Product product) => Path.Combine(Runtime, product.Id + ".json");
 
     public SetupInput Discover(SetupInput s) =>
         s with
@@ -84,7 +84,7 @@ public sealed class Workflow(string root, string toolsDirectory)
         return Convert.ToHexString(await SHA256.HashDataAsync(stream, ct));
     }
 
-    async Task<BuildIdentity> Identity(SetupInput s, string id, CancellationToken ct)
+    async Task<ProductInput> Identity(SetupInput s, string id, CancellationToken ct)
     {
         string revision = "";
         var exit = await ChildProcess.Run(
@@ -105,8 +105,7 @@ public sealed class Workflow(string root, string toolsDirectory)
             await Hash(s.Wbfs, ct),
             Path.GetFullPath(s.Workspace),
             revision,
-            id == "retro-rewind" ? await Hash(Path.Combine(Package, "RetroRewind6/Binaries/Code.pul"), ct) : "",
-            id == "base" ? "base" : "offline"
+            id == "retro-rewind" ? await Hash(Path.Combine(Package, "RetroRewind6/Binaries/Code.pul"), ct) : ""
         );
     }
 
@@ -114,16 +113,16 @@ public sealed class Workflow(string root, string toolsDirectory)
     {
         Directory.CreateDirectory(root);
         var statuses = new List<ProductStatus>();
-        foreach (var p in Products)
+        foreach (var product in RecompProducts.All)
         {
             bool ready = false;
             string detail = "Build required";
             try
             {
-                if (File.Exists(Receipt(p.Id)) && File.Exists(Executable(p.Id)))
+                if (File.Exists(Receipt(product)) && File.Exists(Executable(product)))
                 {
-                    var receipt = JsonSerializer.Deserialize<BuildReceipt>(await File.ReadAllTextAsync(Receipt(p.Id), ct), Json);
-                    ready = receipt?.Product == p.Id && receipt.Input == await Identity(s, p.Id, ct);
+                    var receipt = JsonSerializer.Deserialize<ProductReceipt>(await File.ReadAllTextAsync(Receipt(product), ct), Json);
+                    ready = receipt?.ProductId == product.Id && receipt.Input == await Identity(s, product.Id, ct);
                     detail = ready ? "Ready" : "Inputs changed — rebuild required";
                 }
             }
@@ -131,7 +130,7 @@ public sealed class Workflow(string root, string toolsDirectory)
             {
                 detail = e.Message;
             }
-            statuses.Add(new(p.Id, p.Name, ready, detail));
+            statuses.Add(new(product.Id, product.Name, ready, detail));
         }
         return statuses.ToArray();
     }
@@ -194,7 +193,7 @@ public sealed class Workflow(string root, string toolsDirectory)
 
     public static List<string> BuildArguments(SetupInput s, string id, string stage, string package)
     {
-        _ = App(id);
+        _ = ProductFor(id);
         List<string> args =
         [
             Path.Combine(s.Workspace, "Launcher/local-build-macos.command"),
@@ -231,11 +230,11 @@ public sealed class Workflow(string root, string toolsDirectory)
     public async Task Build(SetupInput s, string id, Action<string, object> emit, CancellationToken ct)
     {
         RequirePreflight(s);
-        _ = App(id);
+        _ = ProductFor(id);
         if (id == "retro-rewind")
             RetroRewindPackage.Validate(Package);
         var selected = id == "base" ? new[] { "base" } : new[] { "base", "retro-rewind" };
-        var identities = new Dictionary<string, BuildIdentity>();
+        var identities = new Dictionary<string, ProductInput>();
         foreach (var product in selected)
             identities[product] = await Identity(s, product, ct);
         var stage = Path.Combine(root, "Staging", "build-" + Guid.NewGuid().ToString("N"));
@@ -257,15 +256,16 @@ public sealed class Workflow(string root, string toolsDirectory)
             );
             if (exit != 0)
                 throw new InvalidOperationException($"Build exited with code {exit}");
-            foreach (var product in selected)
+            foreach (var productId in selected)
             {
-                if (!File.Exists(Path.Combine(stage, App(product) + ".app", "Contents/MacOS", App(product))))
-                    throw new InvalidDataException("Build did not produce " + product);
-                if (identities[product] != await Identity(s, product, ct))
+                var product = ProductFor(productId);
+                if (!File.Exists(Path.Combine(stage, product.App + ".app", "Contents/MacOS", product.App)))
+                    throw new InvalidDataException("Build did not produce " + productId);
+                if (identities[productId] != await Identity(s, productId, ct))
                     throw new InvalidOperationException("Inputs changed during compilation");
                 await File.WriteAllTextAsync(
-                    Path.Combine(stage, product + ".json"),
-                    JsonSerializer.Serialize(new BuildReceipt(product, identities[product]), Json),
+                    Path.Combine(stage, productId + ".json"),
+                    JsonSerializer.Serialize(new ProductReceipt(productId, identities[productId], DateTimeOffset.UtcNow), Json),
                     ct
                 );
             }
@@ -281,7 +281,7 @@ public sealed class Workflow(string root, string toolsDirectory)
             Publish(
                 stage,
                 Runtime,
-                selected.SelectMany(p => new[] { App(p) + ".app", p + ".json" }).Concat(["UserData/Config.toml", "portable.txt"]).ToArray()
+                selected.SelectMany(p => new[] { ProductFor(p).App + ".app", p + ".json" }).Concat(["UserData/Config.toml", "portable.txt"]).ToArray()
             );
         }
         finally
@@ -346,10 +346,14 @@ public sealed class Workflow(string root, string toolsDirectory)
         config.Write(
             path ?? Config,
             [
-                new("paths", "dvd_root", RuntimeConfiguration.Format(Path.Combine(s.Workspace, "Assets/DATA"))),
-                new("paths", "retro_rewind_root", RuntimeConfiguration.Format(id == "base" ? "" : Path.Combine(Package, "RetroRewind6"))),
-                new("paths", "overlay_roots", "[]"),
-                new("network", "enabled", "false"),
+                new(RuntimeConfigKeys.Paths, RuntimeConfigKeys.DvdRoot, RuntimeConfiguration.Format(Path.Combine(s.Workspace, "Assets/DATA"))),
+                new(
+                    RuntimeConfigKeys.Paths,
+                    RuntimeConfigKeys.RetroRewindRoot,
+                    RuntimeConfiguration.Format(id == "base" ? "" : Path.Combine(Package, "RetroRewind6"))
+                ),
+                new(RuntimeConfigKeys.Paths, RuntimeConfigKeys.OverlayRoots, "[]"),
+                new(RuntimeConfigKeys.Network, RuntimeConfigKeys.NetworkEnabled, "false"),
             ],
             true
         );
@@ -361,11 +365,11 @@ public sealed class Workflow(string root, string toolsDirectory)
 
     public async Task<int> Launch(SetupInput s, string id, Action<string, object> emit, CancellationToken ct)
     {
-        _ = App(id);
+        _ = ProductFor(id);
         if (!(await Status(s, ct)).Single(p => p.Id == id).Ready)
             throw new InvalidOperationException("Product is not ready; rebuild with current inputs");
         Configure(s, id);
         emit("log", new { stage = $"Launching {id}; config={Config}; runtime logs={Path.Combine(Runtime, "UserData/Logs")}" });
-        return await ChildProcess.Run(Executable(id), [], Runtime, (stream, line) => emit("log", new { stage = line, stream }), ct);
+        return await ChildProcess.Run(Executable(ProductFor(id)), [], Runtime, (stream, line) => emit("log", new { stage = line, stream }), ct);
     }
 }
