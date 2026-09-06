@@ -489,3 +489,28 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 AGENTS.md
+
+# Xcode and Swift local state
+**/xcuserdata/
+*.xcuserstate
+*.xcarchive/
+*.dSYM/
+/macos/Native/DerivedData/
+/macos/Native/.build/
+/macos/Native/.swiftpm/
+
+# Local game images and WiiCompiled memory dumps
+*.wbfs
+*.iso
+*.gcm
+*.gcz
+*.ciso
+*.wia
+*.rvz
+mem1.bin
+mem1.bin.mem2
+
+# Native runtime data kept inside a development checkout
+/macos/Native/Runtime/
+/macos/Native/UserData/
+/macos/Native/Staging/
