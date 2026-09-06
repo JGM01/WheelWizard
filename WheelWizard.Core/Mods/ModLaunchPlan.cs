@@ -12,12 +12,13 @@ public static class ModLaunchPlanner
     {
         // Build the final file list. The caller's ordered list, not a second priority sort, determines precedence.
         var candidates = new Dictionary<string, List<ModFileSource>>(StringComparer.OrdinalIgnoreCase);
+        var library = new ModLibrary(root);
         foreach (var mod in mods.Reverse())
         {
             ct.ThrowIfCancellationRequested();
             if (!mod.IsEnabled)
                 continue;
-            var directory = new ModLibrary(root).DirectoryFor(mod.Title);
+            var directory = library.DirectoryFor(mod.Title);
             if (!Directory.Exists(directory))
                 continue;
             foreach (var file in Directory.GetFiles(directory, "*", SearchOption.AllDirectories))
@@ -100,20 +101,10 @@ public static class ModLaunchPlanner
     private static string GetLaunchPatchFileName(ModMetadata mod, string filePath)
     {
         var fileName = Path.GetFileName(filePath);
-        if (!IsModdingArchiveFile(fileName))
+        if (!ModCompatibility.IsModdingArchiveFile(fileName))
             return fileName;
 
         return $"{mod.Priority}.{StripExistingPriorityPrefix(fileName)}";
-    }
-
-    private static bool IsModdingArchiveFile(string fileName)
-    {
-        if (!fileName.EndsWith(".szs", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        var nameWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
-        var tagSeparator = nameWithoutExtension.LastIndexOf('.');
-        return tagSeparator > 0 && tagSeparator + 1 < nameWithoutExtension.Length;
     }
 
     private static string StripExistingPriorityPrefix(string fileName)

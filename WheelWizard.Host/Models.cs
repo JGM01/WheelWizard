@@ -19,7 +19,9 @@ public record Request(
     int? ModId = null,
     string? Url = null,
     string? Author = null,
-    string[]? Titles = null
+    string[]? Titles = null,
+    string? LaunchId = null,
+    string? Choice = null
 );
 
 public record HostEvent(int Version, string Id, string Kind, object? Data = null, string? Outcome = null, string? Error = null);

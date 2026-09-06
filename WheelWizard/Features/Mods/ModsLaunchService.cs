@@ -13,6 +13,8 @@ public interface IModsLaunchService
 // The framework owns the bound list, progress window, and clear-target confirmation.
 public sealed class ModsLaunchService(IModManager modManager) : IModsLaunchService
 {
+    public static ModPreparation Preparation(string target) => new(target, Path.Combine(PathManager.WheelWizardAppdataPath, "ModTransactions"));
+
     public bool ShouldAskToClearTargetFolder(string targetFolderPath) =>
         ModLaunchPlanner.ShouldAskToClearTargetFolder(targetFolderPath, modManager.Mods.Select(mod => mod.ToMetadata()));
 
@@ -22,32 +24,30 @@ public sealed class ModsLaunchService(IModManager modManager) : IModsLaunchServi
         ProgressWindow? window = null;
         try
         {
-            var plan = mods.Any(mod => mod.IsEnabled)
-                ? await Task.Run(() => ModLaunchPlanner.Build(PathManager.ModsFolderPath, mods))
-                : null;
-            if (plan is not null)
+            var preparation = Preparation(targetFolderPath);
+            if (preparation.Recovery is { } recovery)
             {
-                window = new ProgressWindow(t("progress.installing_mods")).SetGoal(t("progress.installing_mods_count", plan.Files.Count)!);
-                window.Show();
+                var restore = await new YesNoWindow()
+                    .SetMainText("Restore previous patches?")
+                    .SetExtraText(recovery.Message + "\n" + recovery.RecordPath)
+                    .SetButtonText("Restore previous patches", "Cancel")
+                    .AwaitAnswer();
+                if (!restore) return Fail(recovery.Message);
+                await Task.Run(preparation.Restore);
+                return Fail("Previous patches restored. Select Play again to review the restored patches before launch.");
             }
+            using var cancellation = new CancellationTokenSource();
+            window = new ProgressWindow(t("progress.installing_mods"))
+                .SetGoal(t("progress.installing_mods"))
+                .SetCancellationTokenSource(cancellation);
+            window.Show();
             var progress = new Progress<ModProgress>(update =>
             {
-                window?.UpdateProgress(update.Percent);
-                window?.SetExtraText($"{t("state.installing")} {update.Stage}");
+                window.UpdateProgress(update.Percent);
+                window.SetExtraText($"{t("state.installing")} {update.Stage}");
             });
-            await Task.Run(() =>
-            {
-                if (plan is null)
-                    ModLaunchPlanner.Prepare(
-                        PathManager.ModsFolderPath,
-                        targetFolderPath,
-                        mods,
-                        clearTargetFolderWhenNoEnabledMods,
-                        progress
-                    );
-                else
-                    ModLaunchPlanner.Copy(targetFolderPath, plan, progress);
-            });
+            await Task.Run(() => preparation.Prepare(PathManager.ModsFolderPath, mods,
+                clearTargetFolderWhenNoEnabledMods, progress: progress, ct: cancellation.Token));
             return Ok();
         }
         catch (Exception ex)

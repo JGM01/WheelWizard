@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Integration tests against the real bundled helper; run build.sh first."""
-import http.server, io, json, os, pathlib, queue, signal, socketserver, subprocess, tempfile, threading, unittest, uuid, zipfile
+import hashlib, http.server, io, json, os, pathlib, queue, signal, socketserver, subprocess, tempfile, threading, unittest, uuid, zipfile
 HELPER = pathlib.Path(__file__).resolve().parent / 'artifacts/WheelWizardNative.app/Contents/Resources/helper/WheelWizard.Host'
 
 # A tiny offline GameBanana stub. The helper reads WHEELWIZARD_GAMEBANANA_URL and downloads only from
@@ -74,6 +74,102 @@ class BridgeTests(unittest.TestCase):
             if predicate(event): return event
         self.fail('No matching event')
     def result(self, ident): return self.until(lambda e: e['id'] == ident and e['kind'] == 'result')
+    def ready_rr(self):
+        managed = self.root / 'managed'
+        rr = managed / 'RetroRewind/RetroRewind6'
+        (rr / 'Binaries').mkdir(parents=True)
+        (rr / 'Binaries/Code.pul').write_text('fixture code')
+        (rr / 'version.txt').write_text('3.6.0')
+        xml = managed / 'RetroRewind/riivolution/RetroRewind6.xml'
+        xml.parent.mkdir(parents=True)
+        xml.write_text('fixture')
+        self.script.write_text("""out=''
+while [[ $# -gt 0 ]]; do
+  case "$1" in --output-dir) out="$2"; shift 2;; *) shift;; esac
+done
+for app in WiiCompiled RetroRewind; do
+  mkdir -p "$out/$app.app/Contents/MacOS"
+  printf '#!/bin/bash\\necho fixture-game-started\\n' > "$out/$app.app/Contents/MacOS/$app"
+  chmod +x "$out/$app.app/Contents/MacOS/$app"
+done
+""")
+        self.assertEqual('success', self.result(self.send('build', product='retro-rewind'))['outcome'])
+        return rr / 'Patches'
+
+    def import_fixture_mod(self, name, filename):
+        archive = self.root / (name + '.zip')
+        with zipfile.ZipFile(archive, 'w') as z: z.writestr(filename, 'fixture')
+        self.assertEqual('success', self.result(self.send('mods-import', archivePath=str(archive), modTitle=name))['outcome'])
+
+    def test_native_mod_launch_and_compatibility_gate(self):
+        patches = self.ready_rr()
+        self.import_fixture_mod('Compatible', 'Example.MenuSingle.szs')
+        launch = self.send('launch', product='retro-rewind')
+        self.until(lambda e: e['id'] == launch and e['kind'] == 'phase' and e['data']['phase'] == 'running')
+        self.assertEqual('success', self.result(launch)['outcome'])
+        self.assertTrue((patches / '1.Example.MenuSingle.szs').exists())
+        self.import_fixture_mod('Needs conversion', 'MenuSingle.szs')
+        self.assertEqual('failure', self.result(self.send('launch', product='retro-rewind'))['outcome'])
+        self.assertEqual(['1.Example.MenuSingle.szs'], [f.name for f in patches.iterdir()])
+        listed = self.result(self.send('mods-list'))['data']['mods']
+        self.assertEqual('MenuSingle.szs', next(m for m in listed if m['title'] == 'Needs conversion')['findings'][0]['relativePath'])
+        self.assertEqual('success', self.result(self.send('launch', product='base'))['outcome'])
+
+    def test_patch_choice_holds_gate_and_is_correlated(self):
+        patches = self.ready_rr()
+        patches.mkdir(); (patches / 'MenuSingle.szs').write_text('needs conversion')
+        launch = self.send('launch', product='retro-rewind')
+        self.until(lambda e: e['id'] == launch and e['kind'] == 'phase' and e['data']['phase'] == 'awaiting-choice')
+        self.assertEqual('failure', self.result(self.send('mods-list'))['outcome'])
+        self.assertEqual('failure', self.result(self.send('launch-choice', launchId='wrong', choice='delete'))['outcome'])
+        self.assertEqual('success', self.result(self.send('launch-choice', launchId=launch, choice='keep'))['outcome'])
+        self.assertEqual('failure', self.result(launch)['outcome'])
+        self.assertTrue((patches / 'MenuSingle.szs').exists())
+        launch = self.send('launch', product='retro-rewind')
+        self.until(lambda e: e['id'] == launch and e['kind'] == 'phase' and e['data']['phase'] == 'awaiting-choice')
+        self.assertEqual('success', self.result(self.send('launch-choice', launchId=launch, choice='delete'))['outcome'])
+        self.assertEqual('success', self.result(launch)['outcome'])
+        self.assertEqual([], list(patches.iterdir()))
+        self.assertEqual('failure', self.result(self.send('launch-choice', launchId=launch, choice='delete'))['outcome'])
+        (patches / 'retained.bin').write_text('retained')
+        launch = self.send('launch', product='retro-rewind')
+        self.until(lambda e: e['id'] == launch and e['kind'] == 'phase' and e['data']['phase'] == 'awaiting-choice')
+        self.send('cancel')
+        self.assertEqual('cancelled', self.result(launch)['outcome'])
+        self.assertTrue((patches / 'retained.bin').exists())
+
+    def test_explicit_patch_recovery_blocks_rr_mutations(self):
+        patches = self.ready_rr()
+        stage = patches.parent / '.ww-patches-fixture'
+        backup = patches.parent / '.ww-patches-fixture-previous'
+        backup.mkdir(); (backup / 'previous.bin').write_text('previous')
+        patches.mkdir(); (patches / 'new.bin').write_text('new')
+        transactions = self.root / 'managed/ModTransactions'
+        transactions.mkdir(exist_ok=True)
+        record = transactions / (hashlib.sha256(str(patches).encode()).hexdigest().upper() + '.json')
+        record.write_text(json.dumps(dict(Stage=str(stage), Backup=str(backup), HadTarget=True, Phase='publishing')))
+        status = self.result(self.send('status'))
+        self.assertIsNotNone(status['data']['recovery'])
+        for command in ['launch', 'build', 'package-remove', 'package-update', 'install']:
+            self.assertEqual('failure', self.result(self.send(command, product='retro-rewind'))['outcome'])
+        self.assertEqual('success', self.result(self.send('launch', product='base'))['outcome'])
+        self.assertEqual('success', self.result(self.send('patches-restore'))['outcome'])
+        self.assertEqual(['previous.bin'], [f.name for f in patches.iterdir()])
+        self.assertFalse(record.exists())
+        self.assertIsNone(self.result(self.send('status'))['data']['recovery'])
+
+    def test_failed_log_creation_releases_operation_gate(self):
+        self.assertEqual('success', self.result(self.send('preflight'))['outcome'])
+        logs = self.root / 'managed/Logs'
+        backup = self.root / 'managed/Logs-backup'
+        logs.rename(backup)
+        logs.write_text('not a directory')
+        try:
+            self.assertEqual('failure', self.result(self.send('preflight'))['outcome'])
+        finally:
+            logs.unlink(); backup.rename(logs)
+        self.assertEqual('success', self.result(self.send('preflight'))['outcome'])
+
     def test_self_contained_protocol_failure_and_recovery(self):
         runtime = json.loads(pathlib.Path(str(HELPER) + '.runtimeconfig.json').read_text())['runtimeOptions']
         self.assertIn('includedFrameworks', runtime)

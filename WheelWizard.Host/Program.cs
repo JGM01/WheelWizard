@@ -22,6 +22,8 @@ void Send(HostEvent value)
         Console.WriteLine(JsonSerializer.Serialize(value, ProductWorkflow.Json));
 }
 CancellationTokenSource? active = null;
+var activeLock = new object();
+void CancelActive() { lock (activeLock) active?.Cancel(); }
 Task running = Task.CompletedTask;
 int occupied = 0;
 using var sessionLock = new FileStream(Path.Combine(root, "session.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
@@ -32,9 +34,22 @@ using var signal = System.Runtime.InteropServices.PosixSignalRegistration.Create
     {
         context.Cancel = true;
         shutdown.Cancel();
-        active?.Cancel();
+        CancelActive();
     }
 );
+var choiceLock = new object();
+(string Id, TaskCompletionSource<bool> Answer)? pendingChoice = null;
+object ModRow(ModMetadata mod, CancellationToken ct)
+{
+    IReadOnlyList<ModCompatibilityFinding> findings = [];
+    string? inspectionError = null;
+    try { findings = ModCompatibility.Scan(mods.DirectoryFor(mod.Title), mod.Title, ct); }
+    catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+    { inspectionError = error.Message; }
+    // A failed inspection must not hide the mod or make it impossible to disable/remove it.
+    return new { mod.Title, mod.Author, mod.ModID, mod.IsEnabled, mod.Priority, findings, inspectionError };
+}
+object ModList(CancellationToken ct) => new { mods = mods.Load(ct).Select(mod => ModRow(mod, ct)).ToArray() };
 var seen = new HashSet<string>();
 try
 {
@@ -50,8 +65,20 @@ try
                 throw new FormatException("Duplicate request ID");
             if (request.Command == "cancel")
             {
-                active?.Cancel();
+                CancelActive();
                 Send(new(1, request.Id, "result", Outcome: "success"));
+                continue;
+            }
+            if (request.Command == "launch-choice")
+            {
+                lock (choiceLock)
+                {
+                    if (pendingChoice is not { } choice || choice.Id != request.LaunchId || request.Choice is not ("delete" or "keep"))
+                        throw new ArgumentException("No matching launch choice is pending");
+                    pendingChoice = null;
+                    Send(new(1, request.Id, "result", Outcome: "success"));
+                    choice.Answer.TrySetResult(request.Choice == "delete");
+                }
                 continue;
             }
             if (Interlocked.CompareExchange(ref occupied, 1, 0) != 0)
@@ -59,9 +86,13 @@ try
                 Send(new(1, request.Id, "result", Outcome: "failure", Error: "An operation is already active"));
                 continue;
             }
-            active?.Dispose();
-            active = new CancellationTokenSource();
-            var ct = active.Token;
+            CancellationToken ct;
+            lock (activeLock)
+            {
+                active?.Dispose();
+                active = new CancellationTokenSource();
+                ct = active.Token;
+            }
             var req = request;
             running = Task.Run(async () =>
             {
@@ -69,24 +100,54 @@ try
                     workflow.Logs,
                     DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N") + ".jsonl"
                 );
-                using var log = new StreamWriter(logPath) { AutoFlush = true };
+                StreamWriter? log = null;
                 object logLock = new();
+                void Record(HostEvent ev)
+                {
+                    try { lock (logLock) log?.WriteLine(JsonSerializer.Serialize(ev, ProductWorkflow.Json)); }
+                    catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                    { Console.Error.WriteLine("Operation log write failed: " + error.Message); }
+                }
                 void Emit(string kind, object data)
                 {
                     var ev = new HostEvent(1, req.Id, kind, data);
-                    lock (logLock)
-                        log.WriteLine(JsonSerializer.Serialize(ev, ProductWorkflow.Json));
+                    Record(ev);
                     Send(ev);
+                }
+                void Complete(HostEvent ev)
+                {
+                    Record(ev);
+                    lock (outputLock)
+                    {
+                        Interlocked.Exchange(ref occupied, 0);
+                        Send(ev);
+                    }
+                }
+                async Task<bool> ChoosePatches(CancellationToken token)
+                {
+                    var answer = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    lock (choiceLock) pendingChoice = (req.Id, answer);
+                    try
+                    {
+                        Emit("phase", new { phase = "awaiting-choice" });
+                        return await answer.Task.WaitAsync(token);
+                    }
+                    finally
+                    {
+                        lock (choiceLock)
+                            if (pendingChoice?.Id == req.Id) pendingChoice = null;
+                    }
                 }
                 try
                 {
+                    log = new StreamWriter(logPath) { AutoFlush = true };
                     Emit("log", new { stage = $"{req.Command}; operation log: {logPath}" });
                     var setup = workflow.Discover(req.Setup ?? new());
                     object? result;
                     switch (req.Command)
                     {
                         case "mods-list":
-                            result = new { mods = mods.Load(ct) };
+                            result = ModList(ct);
                             break;
                         case "mods-import":
                             await mods.ImportNext(
@@ -95,29 +156,29 @@ try
                                 progress: new ModEventProgress(update => Emit("progress", new { stage = update.Stage, percent = update.Percent })),
                                 ct: ct
                             );
-                            result = new { mods = mods.Load() };
+                            result = ModList(CancellationToken.None);
                             break;
                         case "mods-enabled":
                             mods.SetEnabled(
                                 req.ModTitle ?? throw new ArgumentException("modTitle required"),
                                 req.Enabled ?? throw new ArgumentException("enabled required")
                             );
-                            result = new { mods = mods.Load() };
+                            result = ModList(CancellationToken.None);
                             break;
                         case "mods-move":
                             mods.Move(
                                 req.ModTitle ?? throw new ArgumentException("modTitle required"),
                                 req.Direction ?? throw new ArgumentException("direction required")
                             );
-                            result = new { mods = mods.Load() };
+                            result = ModList(CancellationToken.None);
                             break;
                         case "mods-reorder":
                             mods.Reorder(req.Titles ?? throw new ArgumentException("titles required"));
-                            result = new { mods = mods.Load() };
+                            result = ModList(CancellationToken.None);
                             break;
                         case "mods-remove":
                             mods.Remove(req.ModTitle ?? throw new ArgumentException("modTitle required"));
-                            result = new { mods = mods.Load() };
+                            result = ModList(CancellationToken.None);
                             break;
                         case "mods-preview":
                             result = ModLaunchPlanner.Build(mods.Root, mods.Load(ct), ct);
@@ -176,7 +237,7 @@ try
                                 if (File.Exists(dest))
                                     File.Delete(dest);
                             }
-                            result = new { mods = mods.Load() };
+                            result = ModList(CancellationToken.None);
                             break;
                         }
                         case "preflight":
@@ -187,12 +248,17 @@ try
                             {
                                 products = await workflow.Status(setup, ct),
                                 package = workflow.PackageStatus(),
+                                recovery = workflow.Patches.Recovery,
                                 logs = workflow.Logs,
                                 runtimeLogs = Path.Combine(workflow.Runtime, "UserData/Logs"),
                             };
                             break;
                         case "package-status":
                             result = workflow.PackageStatus();
+                            break;
+                        case "patches-restore":
+                            workflow.Patches.Restore();
+                            result = new { recovery = workflow.Patches.Recovery };
                             break;
                         case "package-latest":
                             using (var http = new HttpClient())
@@ -225,7 +291,7 @@ try
                             result = workflow.ReadSettings();
                             break;
                         case "launch":
-                            var exit = await workflow.Launch(setup, req.Product ?? "", Emit, ct);
+                            var exit = await workflow.Launch(setup, req.Product ?? "", Emit, ct, ChoosePatches);
                             Emit("status", new { exitCode = exit });
                             if (exit != 0)
                                 throw new InvalidOperationException($"Game exited with code {exit}");
@@ -239,34 +305,24 @@ try
                         default:
                             throw new ArgumentException("Unknown command: " + req.Command);
                     }
-                    lock (logLock)
-                        log.WriteLine(
-                            JsonSerializer.Serialize(new HostEvent(1, req.Id, "result", result, "success"), ProductWorkflow.Json)
-                        );
-                    Interlocked.Exchange(ref occupied, 0);
-                    Send(new(1, req.Id, "result", result, "success"));
+                    Complete(new(1, req.Id, "result", result, "success"));
                 }
                 catch (OperationCanceledException)
                 {
-                    lock (logLock)
-                        log.WriteLine(
-                            JsonSerializer.Serialize(new HostEvent(1, req.Id, "result", Outcome: "cancelled"), ProductWorkflow.Json)
-                        );
-                    Interlocked.Exchange(ref occupied, 0);
-                    Send(new(1, req.Id, "result", Outcome: "cancelled"));
+                    Complete(new(1, req.Id, "result", Outcome: "cancelled"));
                 }
                 catch (Exception e)
                 {
-                    lock (logLock)
-                        log.WriteLine(
-                            JsonSerializer.Serialize(
-                                new HostEvent(1, req.Id, "result", Outcome: "failure", Error: e.ToString()),
-                                ProductWorkflow.Json
-                            )
-                        );
+                    if (e is ModCompatibilityException incompatible)
+                        Emit("blockers", new { findings = incompatible.Findings });
+                    Emit("recovery", new { recovery = workflow.Patches.Recovery });
                     Console.Error.WriteLine(e);
-                    Interlocked.Exchange(ref occupied, 0);
-                    Send(new(1, req.Id, "result", Outcome: "failure", Error: e.Message));
+                    Complete(new(1, req.Id, "result", Outcome: "failure", Error: e.Message));
+                }
+                finally
+                {
+                    try { log?.Dispose(); }
+                    catch (IOException e) { Console.Error.WriteLine(e.Message); }
                 }
             });
         }
@@ -277,9 +333,9 @@ try
     }
 }
 catch (OperationCanceledException) { }
-active?.Cancel();
+CancelActive();
 await running;
-active?.Dispose();
+lock (activeLock) active?.Dispose();
 
 // Slim, Swift-friendly projections of the GameBanana catalog (see macos/Native README). Only the
 // fields the native browser renders travel over the protocol; image URLs are absolute here.

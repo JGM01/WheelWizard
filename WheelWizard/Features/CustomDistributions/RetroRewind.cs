@@ -43,6 +43,8 @@ public class RetroRewind : IDistribution
 
     public async Task<OperationResult> InstallAsync(ProgressWindow progressWindow)
     {
+        if (WheelWizard.Mods.ModsLaunchService.Preparation(PathManager.PatchesFolderPath).Recovery is { } recovery)
+            return Fail(recovery.Message + " Open Play to restore previous patches. " + recovery.RecordPath);
         if (GetCurrentVersion() is not null)
         {
             var removeResult = await RemoveAsync(progressWindow);
@@ -79,6 +81,7 @@ public class RetroRewind : IDistribution
     {
         try
         {
+            WheelWizard.Mods.ModsLaunchService.Preparation(PathManager.PatchesFolderPath).EnsureReady();
             RetroRewindManager.UninstallAsync(Root);
             return Task.FromResult(Ok());
         }
@@ -110,6 +113,7 @@ public class RetroRewind : IDistribution
         window.SetCancellationTokenSource(cancellation);
         try
         {
+            WheelWizard.Mods.ModsLaunchService.Preparation(PathManager.PatchesFolderPath).EnsureReady();
             using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
             await operation(new RetroRewindManager(http), cancellation.Token);
             return Ok();

@@ -16,6 +16,13 @@ struct ContentView: View {
         } detail: {
             detail
         }
+        .alert("Existing patches found", isPresented: Binding(get: { session.awaitingPatchChoice }, set: { _ in })) {
+            Button("Delete", role: .destructive) { session.choosePatches(delete: true) }
+            Button("Keep") { session.choosePatches(delete: false) }
+            Button("Cancel", role: .cancel) { session.cancelOperation() }
+        } message: {
+            Text("All mods are disabled. Delete existing runtime patches, or keep them active for this launch? Retained patches will be checked for conversion requirements.")
+        }
         .toolbar {
             ToolbarItem(placement: .automatic) {
                 SettingsLink()

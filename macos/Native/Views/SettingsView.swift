@@ -28,6 +28,7 @@ private struct PlaybackSettingsView: View {
     @EnvironmentObject var session: Session
     @State private var volume = 1.0
     @State private var resolution = 1.0
+    @State private var baseline = RuntimeSettings()
 
     var body: some View {
         Form {
@@ -55,10 +56,19 @@ private struct PlaybackSettingsView: View {
         }
         .formStyle(.grouped)
         .padding(.top, 8)
-        .disabled(session.busy || !session.connected)
-        .onAppear {
-            volume = session.settings.volume
-            resolution = session.settings.resolutionMultiplier
+        .disabled(session.busy || !session.connected || !session.settingsLoaded)
+        .onAppear { load(session.settings) }
+        .onChange(of: session.completedLaunchCount) { _, _ in load(session.settings) }
+        .onChange(of: session.settings) { _, value in
+            if volume == baseline.volume && resolution == baseline.resolutionMultiplier {
+                load(value)
+            } else if value.volume == volume && value.resolutionMultiplier == resolution {
+                baseline = value
+            }
         }
+    }
+
+    private func load(_ value: RuntimeSettings) {
+        volume = value.volume; resolution = value.resolutionMultiplier; baseline = value
     }
 }

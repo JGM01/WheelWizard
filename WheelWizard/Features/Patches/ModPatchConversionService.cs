@@ -1,3 +1,4 @@
+using WheelWizard.Core.Mods;
 using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 using WheelWizard.Features.Archives;
@@ -36,7 +37,7 @@ public sealed class ModPatchConversionService(ISzsPatchConverter szsPatchConvert
         if (!Directory.Exists(modDirectory))
             return [];
 
-        return Directory.EnumerateFiles(modDirectory, "*", SearchOption.AllDirectories).Where(IsConvertibleArchiveFile).ToArray();
+        return ModCompatibility.Scan(modDirectory).Select(finding => Path.Combine(modDirectory, finding.RelativePath)).ToArray();
     }
 
     public void RefreshCompatibility(Mod mod)
@@ -258,21 +259,7 @@ public sealed class ModPatchConversionService(ISzsPatchConverter szsPatchConvert
             : szsPatchConverter.EstimateDifference(baseline, fileBytes);
 
     private static IReadOnlyList<string> GetConvertibleArchiveFilesInDirectory(string directory) =>
-        Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories).Where(IsConvertibleArchiveFile).ToArray();
-
-    private static bool IsConvertibleArchiveFile(string filePath)
-    {
-        var fileName = Path.GetFileName(filePath);
-        if (LooseBrsarPatchFileName.TryGetNormalizedFileName(fileName, out _))
-            return true;
-
-        if (IsBrsarFileName(fileName))
-            return true;
-
-        return Path.GetExtension(filePath).Equals(".szs", StringComparison.OrdinalIgnoreCase)
-            && !IsModdingArchiveFile(fileName)
-            && !KartSzsAllowList.IsAllowedFullCharacterOrKart(fileName);
-    }
+        ModCompatibility.Scan(directory).Select(finding => Path.Combine(directory, finding.RelativePath)).ToArray();
 
     private static bool IsBrsarFileName(string fileName) => fileName.Equals("revo_kart.brsar", StringComparison.OrdinalIgnoreCase);
 
@@ -341,16 +328,6 @@ public sealed class ModPatchConversionService(ISzsPatchConverter szsPatchConvert
         }
 
         return writtenCount;
-    }
-
-    private static bool IsModdingArchiveFile(string fileName)
-    {
-        if (!fileName.EndsWith(".szs", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        var nameWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
-        var tagSeparator = nameWithoutExtension.LastIndexOf('.');
-        return tagSeparator > 0 && tagSeparator + 1 < nameWithoutExtension.Length;
     }
 
     private static string SanitizeArchivePrefix(string value)

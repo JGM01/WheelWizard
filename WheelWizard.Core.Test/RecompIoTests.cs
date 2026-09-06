@@ -17,6 +17,18 @@ public sealed class RecompIoTests : IDisposable
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
+    public async Task ChildCallbackFailureStopsOwnedProcess(bool onStart)
+    {
+        if (OperatingSystem.IsWindows()) return;
+        await Assert.ThrowsAsync<IOException>(async () => await ChildProcess.Run("/bin/bash",
+            ["-c", "echo ready; sleep 120"], root,
+            (_, _) => { if (!onStart) throw new IOException("Lost output transport"); }, default,
+            started: () => { if (onStart) throw new IOException("Lost start notification"); }).WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
     public async Task DownloadPublishesCompletedFileAndReportsProgress(bool knownLength)
     {
         File.WriteAllText(Target, "previous executable");

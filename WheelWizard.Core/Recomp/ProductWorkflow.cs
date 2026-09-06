@@ -1,3 +1,4 @@
+using WheelWizard.Core.Mods;
 using System.IO.Abstractions;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -17,6 +18,7 @@ public sealed class ProductWorkflow(string root, string toolsDirectory)
     public string Config => Path.Combine(Runtime, "UserData", "Config.toml");
     public string Package => Path.Combine(root, "RetroRewind");
     public string Logs => Path.Combine(root, "Logs");
+    public ModPreparation Patches => new(Path.Combine(Package, "RetroRewind6", "Patches"), Path.Combine(root, "ModTransactions"));
     readonly RuntimeConfiguration config = new(new Testably.Abstractions.RealFileSystem());
 
     static Product ProductFor(string id) => RecompProducts.ById(id);
@@ -173,6 +175,7 @@ public sealed class ProductWorkflow(string root, string toolsDirectory)
 
     public async Task UpdateRR(SetupInput s, Action<string, object> emit, CancellationToken ct)
     {
+        Patches.EnsureReady();
         RequirePreflight(s);
         if (RetroRewindManager.InstalledVersion(Package) == null)
             throw new InvalidOperationException("Retro Rewind is not installed");
@@ -185,12 +188,14 @@ public sealed class ProductWorkflow(string root, string toolsDirectory)
     // the right scope when the root is shared with other content).
     public void RemoveRR()
     {
+        Patches.EnsureReady();
         if (Directory.Exists(Package))
             Directory.Delete(Package, recursive: true);
     }
 
     public async Task Install(SetupInput s, Action<string, object> emit, CancellationToken ct)
     {
+        Patches.EnsureReady();
         RequirePreflight(s);
         if (RetroRewindManager.InstalledVersion(Package) != null)
             throw new InvalidOperationException("An RR installation already exists. This MVP only supports fresh installation.");
@@ -247,6 +252,7 @@ public sealed class ProductWorkflow(string root, string toolsDirectory)
     {
         RequirePreflight(s);
         _ = ProductFor(id);
+        if (id == "retro-rewind") Patches.EnsureReady();
         if (id == "retro-rewind")
             RetroRewindPackage.Validate(Package);
         var selected = id == "base" ? new[] { "base" } : new[] { "base", "retro-rewind" };
@@ -375,17 +381,42 @@ public sealed class ProductWorkflow(string root, string toolsDirectory)
         );
     }
 
+    private sealed class LaunchModProgress(Action<ModProgress> report) : IProgress<ModProgress>
+    {
+        public void Report(ModProgress update) => report(update);
+    }
+
     public RuntimeSettings ReadSettings() => config.ReadSettings(Config);
 
     public void WriteSettings(RuntimeSettings settings) => config.WriteSettings(Config, settings);
 
-    public async Task<int> Launch(SetupInput s, string id, Action<string, object> emit, CancellationToken ct)
+    public async Task<int> Launch(SetupInput s, string id, Action<string, object> emit, CancellationToken ct,
+        Func<CancellationToken, Task<bool>>? chooseClearPatches = null)
     {
         _ = ProductFor(id);
+        emit("phase", new { phase = "checking" });
+        if (id == "retro-rewind") Patches.EnsureReady();
         if (!(await Status(s, ct)).Single(p => p.Id == id).Ready)
             throw new InvalidOperationException("Product is not ready; rebuild with current inputs");
+        if (id == "retro-rewind")
+        {
+            var library = new ModLibrary(Path.Combine(root, "Mods"));
+            var mods = library.Load(ct);
+            var clear = false;
+            if (ModLaunchPlanner.ShouldAskToClearTargetFolder(Patches.Target, mods))
+            {
+                if (chooseClearPatches == null) throw new InvalidOperationException("Choose Delete or Keep existing patches before launch");
+                clear = await chooseClearPatches(ct);
+            }
+            Patches.Prepare(library.Root, mods, clear, requireCompatibility: true,
+                progress: new LaunchModProgress(update => emit("progress", new { stage = update.Stage, percent = update.Percent })),
+                phase: phase => emit("phase", new { phase }), ct: ct);
+        }
+        ct.ThrowIfCancellationRequested();
         Configure(s, id);
+        emit("phase", new { phase = "starting" });
         emit("log", new { stage = $"Launching {id}; config={Config}; runtime logs={Path.Combine(Runtime, "UserData/Logs")}" });
-        return await ChildProcess.Run(Executable(ProductFor(id)), [], Runtime, (stream, line) => emit("log", new { stage = line, stream }), ct);
+        return await ChildProcess.Run(Executable(ProductFor(id)), [], Runtime, (stream, line) => emit("log", new { stage = line, stream }), ct,
+            started: () => emit("phase", new { phase = "running" }));
     }
 }

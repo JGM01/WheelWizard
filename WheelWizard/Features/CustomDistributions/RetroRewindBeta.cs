@@ -128,6 +128,11 @@ public class RetroRewindBeta : IDistribution
     public Task<OperationResult> RemoveAsync(ProgressWindow progressWindow)
     {
         var rootPath = PathManager.RiivolutionWhWzFolderPath;
+        if (WheelWizard.Mods.ModsLaunchService.Preparation(PathManager.RrBetaPatchesFolderPath).Recovery is { } recovery)
+        {
+            OperationResult blocked = Fail(recovery.Message + " Open Play to restore previous patches. " + recovery.RecordPath);
+            return Task.FromResult(blocked);
+        }
 
         foreach (var entry in LoadManifest())
         {

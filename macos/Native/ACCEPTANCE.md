@@ -89,3 +89,27 @@ Manual UI acceptance remains to be recorded against the live catalog:
 - [ ] Confirm an already-installed mod shows **Installed** and cannot be installed twice.
 - [ ] Exercise offline/error states and a cancelled install; confirm `.downloads` cleanup.
 - [ ] Re-run the desktop frontend and confirm its mod browser still works against the shared Core catalog.
+
+
+## Native mod application and session state (2026-09-06)
+
+Core now owns shared compatibility discovery and staged patch preparation with explicit interrupted-publication recovery. Both frontends use staged preparation; the framework retains its permissive conversion UX. Native RR launch blocks enabled conversion-required or unreadable mods and scans retained patches after Keep. Vanilla launch stays unchanged.
+
+The native session uses explicit connection/operation states and launch phases, typed request context, and a deduplicated queue of follow-up reads. Host holds the operation gate while awaiting Delete/Keep. Settings writes only update confirmed state after successful responses; malformed payloads invalidate the session instead of crashing the JSON serializer.
+
+### Real game acceptance
+
+- **Passed:** enabled only the installed **Gum Luigi** mod, prepared and published its patch files, and reached native RR's Running phase. The runtime log confirmed the managed RR root.
+- **Passed, user confirmed:** the visible character change appeared in-game (“I did see the visible character change. it worked”).
+- **Passed:** the 90-second probe cancelled the game and returned terminal outcome `cancelled`; original mod enabled states and priorities were restored and checked against the saved snapshot.
+- **Pending:** normal exit for this specific mod-launch batch. The probe ended by cancellation, so it does not establish normal exit.
+
+Durable operation log: `~/Library/Application Support/WheelWizardNative/Logs/20260906-160728-330c14cb90a2470995482334a0df3733.jsonl`, launch request `e7e4876a-683b-4a8a-9dae-8d0fc2024e8c`. Temporary full protocol capture: `/tmp/ww-gum-acceptance.jsonl`.
+
+### Automated verification
+
+- **132 Core tests passed**, including staged precedence/cleanup, compatibility rules, disabled/missing mods, retained-patch checks, cancellation, real filesystem rollback, interrupted-publication fixtures, failed/restored recovery, and owned-process cleanup after callback failure.
+- Swift reducer tests cover all **21 operation types**, launch ordering, cancellation, follow-up deduplication, quit and disconnect. Actual Session response-handler tests cover rejected catalog requests, confirmed settings, malformed payloads and disconnected request admission.
+- Bundled-helper and final framework/build results are recorded below after their final runs.
+
+Manual UI checks still to record: Delete/Keep/Cancel presentation, recovery confirmation in each frontend, F10 refresh in an already-open settings window, and Stop and Quit during publication. Their underlying protocol/state/filesystem paths have automated coverage; the dialogs themselves have not been visually accepted in this batch.

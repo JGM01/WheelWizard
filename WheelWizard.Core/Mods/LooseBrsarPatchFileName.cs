@@ -1,4 +1,4 @@
-namespace WheelWizard.Features.Patches;
+namespace WheelWizard.Core.Mods;
 
 public static class LooseBrsarPatchFileName
 {

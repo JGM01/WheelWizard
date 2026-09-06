@@ -5,6 +5,7 @@ p = argparse.ArgumentParser()
 p.add_argument('workspace', type=pathlib.Path)
 p.add_argument('wbfs', type=pathlib.Path)
 p.add_argument('commands', nargs='+', help='preflight, install, build:base, build:retro-rewind, launch:base, launch:retro-rewind, status')
+p.add_argument('--patch-choice', choices=['delete', 'keep'], help='Explicit choice if RR finds retained patches with no enabled mods')
 p.add_argument('--volume', type=float, default=1.0)
 p.add_argument('--resolution', type=float, default=1.0)
 p.add_argument('--stop-after', type=float, help='Stop a launched game after this many seconds; startup verification only')
@@ -15,8 +16,9 @@ helper = app / 'helper/WheelWizard.Host'
 setup = {'wbfs': str(a.wbfs.resolve()), 'workspace': str(a.workspace.resolve()), 'cmake': '/opt/homebrew/bin/cmake', 'ninja': '/opt/homebrew/bin/ninja', 'nodtool': str(app / 'tools/nodtool'), 'translator': str(app / 'tools/translator/Translator.Cli')}
 child = subprocess.Popen([str(helper)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=sys.stderr, text=True, bufsize=1)
 lock = threading.Lock()
-def send(command, product=None):
+def send(command, product=None, **fields):
     request = {'version': 1, 'id': str(uuid.uuid4()), 'command': command, 'setup': setup}
+    request.update(fields)
     if product: request['product'] = product
     if command == 'config-write': request['settings'] = {'volume': a.volume, 'resolutionMultiplier': a.resolution}
     with lock: child.stdin.write(json.dumps(request) + '\n'); child.stdin.flush()
@@ -33,6 +35,12 @@ try:
             if not line: raise RuntimeError('Helper terminated unexpectedly')
             print(line, end='', flush=True)
             event = json.loads(line)
+            if event.get('id') == request_id and event.get('kind') == 'phase' and event.get('data', {}).get('phase') == 'awaiting-choice':
+                if a.patch_choice:
+                    send('launch-choice', launchId=request_id, choice=a.patch_choice)
+                else:
+                    print('Existing patches need a choice; cancelling. Re-run with --patch-choice delete or keep.', file=sys.stderr)
+                    send('cancel')
             if event.get('id') == request_id and event.get('kind') == 'result':
                 if timer: timer.cancel()
                 if event['outcome'] == 'failure': sys.exit(1)

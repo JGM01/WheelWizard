@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+ F000000000000000000000B3 = {isa = PBXBuildFile; fileRef = F0000000000000000000003C; };
 		F000000000000000000000A0 /* WheelWizardApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000010 /* WheelWizardApp.swift */; };
 		F000000000000000000000A1 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000011 /* AppDelegate.swift */; };
 		F000000000000000000000A2 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000020 /* Models.swift */; };
@@ -22,6 +23,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+ F0000000000000000000003C = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionState.swift; sourceTree = "<group>"; };
 		F00000000000000000000010 /* WheelWizardApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WheelWizardApp.swift; sourceTree = "<group>"; };
 		F00000000000000000000011 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		F00000000000000000000020 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
@@ -62,6 +64,7 @@
 			children = (
 				F00000000000000000000020 /* Models.swift */,
 				F00000000000000000000021 /* Session.swift */,
+ F0000000000000000000003C,
 				F00000000000000000000022 /* Activity.swift */,
 			);
 			path = Models;
@@ -139,6 +142,7 @@
 				F000000000000000000000A5 /* ContentView.swift in Sources */,
 				F000000000000000000000A4 /* Activity.swift in Sources */,
 				F000000000000000000000A3 /* Session.swift in Sources */,
+ F000000000000000000000B3,
 				F000000000000000000000A2 /* Models.swift in Sources */,
 				F000000000000000000000A1 /* AppDelegate.swift in Sources */,
 				F000000000000000000000A0 /* WheelWizardApp.swift in Sources */,

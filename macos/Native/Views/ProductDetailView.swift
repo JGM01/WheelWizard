@@ -4,11 +4,12 @@ struct ProductDetailView: View {
     @EnvironmentObject var session: Session
     let product: Product
     @State private var confirmRemove = false
+    @State private var confirmRestore = false
 
     private var isRetroRewind: Bool { product.id == "retro-rewind" }
     private var productResult: String { session.resultText(for: product.id) }
     private var canPlay: Bool {
-        product.ready && (!isRetroRewind || (session.package.installed && !session.package.outOfDate))
+        product.ready && session.dataStates["products"] == .loaded && (!isRetroRewind || (session.package.installed && !session.package.outOfDate && session.recovery == nil && session.modsLoaded && !session.mods.contains { $0.isEnabled && $0.requiresAttention }))
     }
     private var controlsDisabled: Bool { session.busy || !session.connected }
 
@@ -20,6 +21,20 @@ struct ProductDetailView: View {
                     .foregroundStyle(.secondary)
 
                 actionRow
+
+                if isRetroRewind, session.mods.contains(where: { $0.isEnabled && $0.requiresAttention }) {
+                    Label("Some enabled mods need attention. Open Mods to inspect or disable them before playing.", systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                }
+                if isRetroRewind, let recovery = session.recovery {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Patch recovery required", systemImage: "exclamationmark.triangle")
+                        Text(recovery.message)
+                        Text(recovery.recordPath).font(.caption).textSelection(.enabled)
+                        Button("Restore previous patches…") { confirmRestore = true }
+                            .disabled(controlsDisabled)
+                    }
+                }
 
                 if isRetroRewind {
                     RetroRewindCard(confirmRemove: $confirmRemove)
@@ -38,6 +53,12 @@ struct ProductDetailView: View {
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .navigationTitle(product.name)
+        .alert("Restore previous patches?", isPresented: $confirmRestore) {
+            Button("Restore previous patches") { session.restorePatches() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Restore the complete patch set from before the interrupted publication. If recovery cannot finish, the backup will be preserved and Play will remain blocked.")
+        }
         .alert("Remove Retro Rewind?", isPresented: $confirmRemove) {
             Button("Remove", role: .destructive) { session.removeRR() }
             Button("Cancel", role: .cancel) {}
@@ -64,7 +85,7 @@ struct ProductDetailView: View {
                 Label(product.ready ? "Rebuild" : "Build", systemImage: product.ready ? "arrow.clockwise" : "hammer")
             }
             .controlSize(.large)
-            .disabled(isRetroRewind && !session.package.installed)
+            .disabled(isRetroRewind && (!session.package.installed || session.recovery != nil))
         }
         .disabled(controlsDisabled)
     }
@@ -121,15 +142,18 @@ private struct RetroRewindCard: View {
             HStack {
                 if !session.package.installed {
                     Button("Download and Install") { session.installRR() }
+                        .disabled(session.recovery != nil)
                         .buttonStyle(.borderedProminent)
                 } else if session.package.outOfDate {
                     Button("Update") { session.updateRR() }
+                        .disabled(session.recovery != nil)
                         .buttonStyle(.borderedProminent)
                 }
                 Button("Check for Updates") { session.checkForRRUpdates() }
                 Spacer()
                 if session.package.installed {
                     Button("Remove…", role: .destructive) { confirmRemove = true }
+                        .disabled(session.recovery != nil)
                 }
             }
             .controlSize(.small)

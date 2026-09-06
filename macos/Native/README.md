@@ -59,6 +59,7 @@ Commands: `preflight`, `status`, `package-status`, `package-latest`, `install`, 
 dotnet test WheelWizard.Core.Test -c Release -m:1 -p:CSharpier_Bypass=true
 dotnet test WheelWizard.Test -c Release -p:DefineConstants=MACOS -m:1 -p:CSharpier_Bypass=true
 python3 macos/Native/test_bridge.py
+./macos/Native/test_session.sh
 ```
 
 The CSharpier bypass prevents builds from changing unrelated source line endings. The bridge tests use the real bundled self-contained helper, temporary fixtures, fake child executables, and a nonexistent `DOTNET_ROOT`. They test protocol errors/recovery, busy rejection, cancellation, failed readiness and SIGTERM cleanup. Core/workflow tests cover settings, archives, HTTP failure/cancellation, output draining, argument boundaries, real filesystem publication rollback, successful-exit/missing-output failure, product selection and input changes.
@@ -78,8 +79,23 @@ The native **Mods** sidebar manages an isolated library under `WheelWizardNative
 
 **Preview Conflicts** scans saved enabled states and priorities. Earlier mods win ordinary destination-file collisions; expand a row to inspect its winning and overwritten source paths. **All Files** also shows destinations without collisions. Tagged `.szs` archives retain priority prefixes and remain separate: the preview does not inspect archive-internal conflicts. Same-mod collisions follow the existing filesystem enumeration order. Refresh after external edits; changing the library invalidates the preview.
 
-**Native Play does not apply these mods yet.** The framework's launch service now uses the same Core planner and copier, while native game launch remains unchanged. The framework keeps its bound `Mod` adapter; plain metadata, INI persistence, archive installation, planning and copying live in `WheelWizard.Core.Mods`.
+**Native Retro Rewind Play applies the saved enabled mods before starting the game.** Vanilla Play remains unchanged. Both frontends use Core's staged patch preparation, preserving the existing planner's priority, filename and cleanup rules. The framework keeps its bound `Mod` adapter and conversion UI; metadata, installation, planning, compatibility discovery and staged preparation live in `WheelWizard.Core.Mods`.
+
+Native Mods shows conversion findings and inspection errors. Enabled mods with either block native RR Play; disable them or convert their files externally before retrying. The shared detector retains the framework's existing filename rules and kart allow-list. Passing detection means no known conversion blocker, not guaranteed compatibility. Native conversion is not implemented in this batch; framework conversion behavior remains unchanged.
+
+When all mods are disabled and runtime patches remain, RR Play offers **Delete**, **Keep**, or **Cancel**. Keep scans the retained files for conversion blockers too. Delete stages an empty set. Preparation happens on every Play; failure/cancellation prevents game launch. Patch staging preserves the old copier's retained subdirectories and top-level cleanup rules, including removal of manually added top-level files absent from the plan.
+
+Patch publication stages beside `RetroRewind6/Patches`, journals under `WheelWizardNative/ModTransactions`, and retains the previous directory through the commit. Cancellation during publication waits for the commit/rollback barrier and prevents game startup. Interrupted publication requires an explicit **Restore previous patches…** action on the RR page; RR launch/build/install/update/remove remain blocked until recovery succeeds. Restoration preserves the backup until success is recorded and can be retried. A completed publication with leftover cleanup does not require restoring obsolete patches. The framework offers restoration when Play reaches mod preparation, then asks the user to select Play again so restored patches get a fresh Delete/Keep decision.
+
+See [SESSION.md](SESSION.md) for dependencies and session transitions.
 
 Host protocol version 1 adds `mods-list`, `mods-import`, `mods-enabled`, `mods-move`, `mods-reorder`, `mods-remove`, `mods-preview`, `mods-search`, `mods-details`, and `mods-install`. Import takes `archivePath` and `modTitle`; enabled takes `modTitle` and `enabled`; move takes `modTitle` and `direction` (-1/up or 1/down); reorder takes the full ordered `titles` array and rewrites contiguous priorities; removal takes `modTitle`. List and mutations return `{mods:[...]}` with saved metadata. Preview returns `{files:[{destination,winner:{modTitle,sourcePath},overwritten:[...]}]}`. All commands share the helper's existing operation gate, logging and cancellation protocol. Mod commands require no configured game or toolchain.
 
 The mod browser talks to the GameBanana API (`WheelWizard.Core.GameBanana.GameBananaCatalog`) through the helper: `mods-search` (fields `search`, `page`) returns a slim `{recordCount,perPage,isComplete,results:[...]}` list of Mario Kart Wii mods; `mods-details` (field `modId`) returns the profile with files and absolute image URLs; `mods-install` (fields `url`, `modTitle`, `author`, `modId`) downloads the archive to `Mods/.downloads`, verifies HTTPS (or the `WHEELWIZARD_GAMEBANANA_URL` test host), sniffs the container type, and imports through the same staged `ModLibrary` path, recording author and GameBanana id. `WHEELWIZARD_GAMEBANANA_URL` is a helper-only override so the offline bridge suite stubs the catalog.
+
+
+## Launch decisions and recovery protocol
+
+Protocol version 1 adds `patches-restore` and the control command `launch-choice`. A launch keeps the operation gate while emitting `phase` events (`checking`, `awaiting-choice`, `preparing`, `publishing`, `starting`, `running`). The client responds to `awaiting-choice` with a fresh request ID, `command: "launch-choice"`, `launchId` matching the active launch ID, and `choice: "delete"` or `"keep"`; cancellation uses `cancel`. Unrelated operations and mismatched/repeated choices are rejected. The control acknowledgement is separate from launch completion.
+
+Mod list/mutation rows include `findings: [{modTitle, relativePath, reason}]` and nullable `inspectionError`. `status` includes nullable `recovery: {target, recordPath, message}`. Failures can emit `blockers` with `findings`, and `recovery` with current recovery state before the terminal result. Existing result framing remains unchanged. `demo.py --patch-choice delete|keep` supplies an explicit retained-patches choice; without one, the demo cancels at that prompt.

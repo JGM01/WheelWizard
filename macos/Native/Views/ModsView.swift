@@ -48,6 +48,11 @@ struct ModsView: View {
             Toggle(mod.title, isOn: Binding(get: { mod.isEnabled }, set: { enabled in
                 session.modCommand("mods-enabled", fields: ["modTitle": mod.title, "enabled": enabled])
             }))
+            if mod.requiresAttention {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .help(mod.inspectionError ?? mod.findings.map { "\($0.relativePath): \($0.reason)" }.joined(separator: "\n"))
+            }
             Spacer(minLength: 8)
             Button("Remove…", role: .destructive) { removal = mod }
         }
@@ -97,7 +102,7 @@ struct ModsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Manage mods and preview which files take precedence. Native Play does not apply these mods yet.")
+                Text("Enabled mods apply on the next Retro Rewind launch. Files needing conversion must be disabled or converted before playing; vanilla remains unchanged.")
                     .foregroundStyle(.secondary)
                 HStack {
                     Button("Import Archive…", action: chooseArchive)
@@ -123,6 +128,15 @@ struct ModsView: View {
                 }
                 if !session.mods.isEmpty {
                     modRows
+                }
+                ForEach(session.mods.filter { $0.requiresAttention }) { mod in
+                    DisclosureGroup("\(mod.title) — \(mod.inspectionError == nil ? "conversion required" : "could not inspect files")") {
+                        if let error = mod.inspectionError { Text(error).font(.caption).textSelection(.enabled) }
+                        ForEach(Array(mod.findings.enumerated()), id: \.offset) { _, finding in
+                            Text("\(finding.relativePath): \(finding.reason)")
+                                .font(.caption).textSelection(.enabled)
+                        }
+                    }
                 }
                 Divider()
                 HStack {

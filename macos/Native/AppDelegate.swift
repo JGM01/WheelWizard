@@ -30,8 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             alert.addButton(withTitle: "Keep Running")
             alert.addButton(withTitle: "Stop and Quit")
             guard alert.runModal() == .alertSecondButtonReturn else { return .terminateCancel }
-            session.quitWhenIdle = true
-            session.cancelOperation()
+            session.stopAndQuit()
             return .terminateLater
         }
         session.close()

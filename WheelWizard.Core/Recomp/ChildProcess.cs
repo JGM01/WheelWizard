@@ -10,7 +10,8 @@ public static class ChildProcess
         string directory,
         Action<string, string> log,
         CancellationToken ct,
-        IReadOnlyDictionary<string, string>? environment = null
+        IReadOnlyDictionary<string, string>? environment = null,
+        Action? started = null
     )
     {
         ct.ThrowIfCancellationRequested();
@@ -30,7 +31,7 @@ public static class ChildProcess
                 info.Environment[pair.Key] = pair.Value;
         using var process = new Process { StartInfo = info };
         process.Start();
-        using var registration = ct.Register(() =>
+        void Stop()
         {
             try
             {
@@ -38,14 +39,30 @@ public static class ChildProcess
                     process.Kill(entireProcessTree: true);
             }
             catch (InvalidOperationException) { }
-        });
+        }
+        using var registration = ct.Register(Stop);
         async Task Drain(StreamReader reader, string stream)
         {
-            while (await reader.ReadLineAsync() is { } line)
-                log(stream, line);
+            try
+            {
+                while (await reader.ReadLineAsync() is { } line)
+                    log(stream, line);
+            }
+            catch { Stop(); throw; }
         }
-        await Task.WhenAll(Drain(process.StandardOutput, "stdout"), Drain(process.StandardError, "stderr"), process.WaitForExitAsync());
-        ct.ThrowIfCancellationRequested();
-        return process.ExitCode;
+        try
+        {
+            started?.Invoke();
+            await Task.WhenAll(Drain(process.StandardOutput, "stdout"), Drain(process.StandardError, "stderr"), process.WaitForExitAsync());
+            ct.ThrowIfCancellationRequested();
+            return process.ExitCode;
+        }
+        catch
+        {
+            // Losing the transport or its start notification must not orphan a running game.
+            Stop();
+            await process.WaitForExitAsync();
+            throw;
+        }
     }
 }

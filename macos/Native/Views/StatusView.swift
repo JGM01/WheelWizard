@@ -44,6 +44,7 @@ struct StatusView: View {
             } label: {
                 Label("Stop", systemImage: "stop.circle.fill")
             }
+            .disabled(session.stopping)
             .buttonStyle(.borderless)
             .controlSize(.small)
             .foregroundStyle(.red)

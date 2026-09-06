@@ -16,7 +16,7 @@ struct Product: Identifiable, Codable {
     var detail: String
 }
 
-struct RuntimeSettings: Codable {
+struct RuntimeSettings: Codable, Equatable {
     var volume = 1.0
     var resolutionMultiplier = 1.0
 }
@@ -35,6 +35,9 @@ struct ManagedMod: Codable, Identifiable {
     let modID: Int
     let isEnabled: Bool
     let priority: Int
+    var findings: [CompatibilityFinding] = []
+    var inspectionError: String?
+    var requiresAttention: Bool { inspectionError != nil || !findings.isEmpty }
     var id: String { title }
 }
 
@@ -94,4 +97,16 @@ struct CatalogModDetail: Codable {
 struct CatalogSearchPage: Codable {
     let results: [CatalogMod]
     let isComplete: Bool
+}
+
+struct CompatibilityFinding: Codable {
+    let modTitle: String
+    let relativePath: String
+    let reason: String
+}
+
+struct PatchRecovery: Codable {
+    let target: String
+    let recordPath: String
+    let message: String
 }
