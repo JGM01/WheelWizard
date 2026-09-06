@@ -2,31 +2,31 @@ using System.IO.Abstractions;
 using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 using Semver;
-using WheelWizard.CustomDistributions.Domain;
+using WheelWizard.Core;
 using WheelWizard.Helpers;
 using WheelWizard.Models.Enums;
 using WheelWizard.Services;
 using WheelWizard.Settings;
-using WheelWizard.Shared.Services;
 using WheelWizard.Views.Popups.Generic;
 
 namespace WheelWizard.CustomDistributions;
 
+// Thin UI adapter over WheelWizard.Core.RetroRewindManager. It owns the frontend concerns -
+// where Retro Rewind is installed, the settings gate, save backups and progress windows -
+// while the whole download/install/update/delete orchestration lives in Core so the native
+// frontend can reuse it through the host helper.
 public class RetroRewind : IDistribution
 {
     private readonly IFileSystem _fileSystem;
-    private readonly IApiCaller<IRetroRewindApi> _api;
     private readonly ILogger<IDistribution> _logger;
     private readonly ISettingsManager _settingsManager;
 
     public RetroRewind(
         IFileSystem fileSystem,
-        IApiCaller<IRetroRewindApi> api,
         ILogger<IDistribution> logger,
         ISettingsManager settingsManager
     )
     {
-        _api = api;
         _fileSystem = fileSystem;
         _logger = logger;
         _settingsManager = settingsManager;
@@ -38,6 +38,8 @@ public class RetroRewind : IDistribution
     public string FolderName => "RetroRewind6";
     public string XMLFolderName => "riivolution";
     public string XMLFileName => "RetroRewind6";
+
+    private string Root => PathManager.RiivolutionWhWzFolderPath;
 
     public async Task<OperationResult> InstallAsync(ProgressWindow progressWindow)
     {
@@ -56,84 +58,61 @@ public class RetroRewind : IDistribution
             if (await rksysQuestion.AwaitAnswer())
                 await BackupOldrksys();
         }
-        var serverResponse = await _api.CallApiAsync(api => api.Ping()); // actual response doesnt matter
-        if (serverResponse.IsFailure)
-            return Fail("Could not connect to the server");
 
-        var downloadResult = await DownloadAndExtractRetroRewind(progressWindow);
-        if (downloadResult.IsFailure)
-            return downloadResult;
-
-        if (progressWindow.WasCancellationRequested)
-            return Ok();
-
-        var updateResult = await UpdateAsync(progressWindow);
-        if (updateResult.IsFailure)
-            return updateResult;
-
-        return Ok();
+        return await RunWithProgress(progressWindow, (manager, ct) => manager.InstallAsync(Root, ProgressFor(progressWindow), ct));
     }
 
-    private async Task<OperationResult> DownloadAndExtractRetroRewind(ProgressWindow progressWindow)
+    public async Task<OperationResult> UpdateAsync(ProgressWindow progressWindow)
     {
-        progressWindow.SetExtraText(t("progress.installing_rr_first_time"));
-        string? ownedStage = null;
-        var destinationParentDir = _fileSystem.DirectoryInfo.New(PathManager.RiivolutionWhWzFolderPath);
-        OperationResult? result = null;
-        using var cancellation = new CancellationTokenSource();
-        progressWindow.SetCancellationTokenSource(cancellation);
+        if (GetCurrentVersion() == null)
+            return await InstallAsync(progressWindow);
+        return await RunWithProgress(progressWindow, (manager, ct) => manager.UpdateAsync(Root, ProgressFor(progressWindow), ct));
+    }
+
+    public async Task<OperationResult> ReinstallAsync(ProgressWindow progressWindow)
+    {
+        var removeResult = await RemoveAsync(progressWindow);
+        return removeResult.IsFailure ? removeResult : await InstallAsync(progressWindow);
+    }
+
+    public Task<OperationResult> RemoveAsync(ProgressWindow progressWindow)
+    {
         try
         {
-            using var http = new HttpClient();
-            var progress = new Progress<WheelWizard.Core.PackageProgress>(p =>
-                Dispatcher.UIThread.Post(() =>
-                {
-                    progressWindow.SetExtraText(p.Stage);
-                    if (p.Percent is { } percent)
-                        progressWindow.UpdateProgress((int)percent);
-                })
-            );
-            var package = await new WheelWizard.Core.RetroRewindPackage(http).StageAsync(
-                PathManager.TempModsFolderPath,
-                progress,
-                cancellation.Token
-            );
-            ownedStage = package.Path;
-            var tempExtractionPath = Path.Combine(ownedStage, "content");
-            cancellation.Token.ThrowIfCancellationRequested();
+            RetroRewindManager.UninstallAsync(Root);
+            return Task.FromResult(Ok());
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, e.Message);
+            OperationResult result = Fail(e);
+            return Task.FromResult(result);
+        }
+    }
 
-            // 3) Locate the extracted sub-folder
-            var sourceFolder = _fileSystem.Path.Combine(tempExtractionPath, FolderName);
-            if (!_fileSystem.Directory.Exists(sourceFolder))
-                throw new DirectoryNotFoundException($"Could not find a '{FolderName}' folder inside {tempExtractionPath}");
-
-            // 4) Remove existing install, if any
-            var removeResult = await RemoveAsync(progressWindow);
-            if (removeResult.IsFailure)
+    private static IProgress<PackageProgress> ProgressFor(ProgressWindow window) =>
+        new Progress<PackageProgress>(p =>
+            Dispatcher.UIThread.Post(() =>
             {
-                result = removeResult;
-                throw removeResult.Error.Exception ?? new Exception(removeResult.Error.Message);
-            }
+                if (p.Percent is { } percent)
+                    window.UpdateProgress((int)percent);
+                if (p.Stage is { Length: > 0 } stage)
+                    window.SetExtraText(stage);
+            })
+        );
 
-            // 5) Move over RetroRewind
-            var xmlFolderSource = _fileSystem.Path.Combine(tempExtractionPath, XMLFolderName);
-            var riivolutionFiles = _fileSystem.Directory.EnumerateFiles(xmlFolderSource, "*", SearchOption.AllDirectories);
-            var retroRewindFiles = _fileSystem.Directory.EnumerateFiles(sourceFolder, "*", SearchOption.AllDirectories);
-            foreach (var file in riivolutionFiles.Concat(retroRewindFiles))
-            {
-                var destinationPath = _fileSystem.Path.Combine(
-                    destinationParentDir.FullName,
-                    _fileSystem.Path.GetRelativePath(tempExtractionPath, file)
-                );
-                var destinationDirectoryName = _fileSystem.Path.GetDirectoryName(destinationPath);
-                if (destinationDirectoryName != null)
-                {
-                    var directory = _fileSystem.DirectoryInfo.New(destinationDirectoryName);
-                    if (!directory?.Exists ?? false)
-                        directory?.Create();
-                }
-                _fileSystem.File.Move(file, destinationPath, false); //skip existing files for safety
-            }
+    private async Task<OperationResult> RunWithProgress(
+        ProgressWindow window,
+        Func<RetroRewindManager, CancellationToken, Task> operation
+    )
+    {
+        using var cancellation = new CancellationTokenSource();
+        window.SetCancellationTokenSource(cancellation);
+        try
+        {
+            using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+            await operation(new RetroRewindManager(http), cancellation.Token);
+            return Ok();
         }
         catch (OperationCanceledException)
         {
@@ -141,16 +120,13 @@ public class RetroRewind : IDistribution
         }
         catch (Exception e)
         {
-            result ??= Fail(e);
             _logger.LogError(e, e.Message);
+            return Fail(e);
         }
         finally
         {
-            progressWindow.SetCancellationTokenSource(null);
-            if (ownedStage != null && Directory.Exists(ownedStage))
-                Directory.Delete(ownedStage, true);
+            window.SetCancellationTokenSource(null);
         }
-        return result ?? Ok();
     }
 
     private async Task BackupOldrksys()
@@ -204,353 +180,51 @@ public class RetroRewind : IDistribution
         return string.Empty;
     }
 
-    private async Task<OperationResult<bool>> IsRRUpToDate(SemVersion currentVersion)
-    {
-        var latestVersionResult = await LatestServerVersion();
-        if (latestVersionResult.IsFailure)
-            return Fail("Failed to check for updates");
-
-        var latestVersion = latestVersionResult.Value;
-        var isUpToDate = currentVersion.ComparePrecedenceTo(latestVersion) >= 0;
-        return isUpToDate;
-    }
-
-    private async Task<OperationResult<SemVersion>> LatestServerVersion()
-    {
-        var response = await _api.CallApiAsync(api => api.GetVersionFile());
-        if (!response.IsSuccess || String.IsNullOrWhiteSpace(response.Value))
-            return Fail("Failed to check for updates");
-
-        var result = WheelWizard.Core.RetroRewindPackage.LatestVersion(response.Value);
-        return SemVersion.Parse(result);
-    }
-
-    public async Task<OperationResult> UpdateAsync(ProgressWindow progressWindow)
-    {
-        try
-        {
-            var currentVersion = GetCurrentVersion();
-            if (currentVersion == null)
-                return await InstallAsync(progressWindow);
-
-            var isRRUpToDate = await IsRRUpToDate(currentVersion);
-            if (isRRUpToDate.IsFailure)
-                return isRRUpToDate;
-
-            if (isRRUpToDate.Value)
-                return Ok();
-
-            //if current version is below 3.2.6 we need to do a full reinstall
-            if (currentVersion.ComparePrecedenceTo(new SemVersion(3, 2, 6)) < 0)
-            {
-                var result = await ReinstallAsync(progressWindow);
-                return result.IsSuccess ? Ok() : result;
-            }
-            return await ApplyUpdates(currentVersion, progressWindow);
-        }
-        catch (Exception e)
-        {
-            return e;
-        }
-    }
-
-    private async Task<OperationResult> ApplyUpdates(SemVersion currentVersion, ProgressWindow progressWindow)
-    {
-        var allVersions = await GetAllVersionData();
-        var updatesToApply = GetUpdatesToApply(currentVersion, allVersions);
-        // Step 1: Get the version we are updating to
-        var targetVersion = updatesToApply.Any() ? updatesToApply.Last().Version : currentVersion;
-
-        // Step 2: Apply file deletions for versions between current and targetVersion
-        var deleteSuccess = await ApplyFileDeletionsBetweenVersions(currentVersion, targetVersion);
-        if (deleteSuccess.IsFailure)
-            return Fail(t("message_error.abort_rr.extra.failed_update_delete"));
-
-        // Step 3: Download and apply the updates (if any)
-        for (var i = 0; i < updatesToApply.Count; i++)
-        {
-            var update = updatesToApply[i];
-
-            var success = await DownloadAndApplyUpdate(update, updatesToApply.Count, i + 1, progressWindow);
-            if (progressWindow.WasCancellationRequested)
-                return Ok();
-
-            if (success.IsFailure)
-                return Fail(t("message_error.abort_rr.extra.failed_update_apply"));
-
-            // Update the version file after each successful update
-            UpdateVersionFile(update.Version);
-        }
-        return Ok();
-    }
-
-    private void UpdateVersionFile(SemVersion newVersion)
-    {
-        var versionFilePath = _fileSystem.Path.Combine(PathManager.RiivolutionWhWzFolderPath, FolderName, "version.txt");
-        _fileSystem.File.WriteAllText(versionFilePath, newVersion.ToString());
-    }
-
-    private async Task<OperationResult> DownloadAndApplyUpdate(
-        UpdateData update,
-        int totalUpdates,
-        int currentUpdateIndex,
-        ProgressWindow popupWindow
-    )
-    {
-        var tempZipPath = _fileSystem.Path.Combine(_fileSystem.Path.GetTempPath(), _fileSystem.Path.GetRandomFileName());
-        try
-        {
-            popupWindow.SetExtraText($"{t("action.update")} {currentUpdateIndex}/{totalUpdates}: {update.Description}");
-            var finalFile = await DownloadHelper.DownloadToLocationAsync(update.Url, tempZipPath, popupWindow);
-
-            if (finalFile == null)
-                return Fail("Failed to download update file");
-
-            popupWindow.UpdateProgress(100);
-            popupWindow.SetExtraText(t("state.extracting"));
-            var destinationDirectoryPath = PathManager.RiivolutionWhWzFolderPath;
-            _fileSystem.Directory.CreateDirectory(destinationDirectoryPath);
-            var extractResult = ExtractZipFile(finalFile, destinationDirectoryPath, popupWindow);
-            if (extractResult.IsFailure)
-                return extractResult;
-
-            if (_fileSystem.File.Exists(finalFile))
-                _fileSystem.File.Delete(finalFile);
-        }
-        finally
-        {
-            if (_fileSystem.File.Exists(tempZipPath))
-                _fileSystem.File.Delete(tempZipPath);
-        }
-
-        return Ok();
-    }
-
-    private OperationResult ExtractZipFile(string path, string destinationDirectory, ProgressWindow progressWindow)
-    {
-        try
-        {
-            var progress = new Progress<WheelWizard.Core.PackageProgress>(p =>
-                Dispatcher.UIThread.Post(() =>
-                {
-                    if (p.Percent is { } percent)
-                        progressWindow.UpdateProgress((int)percent);
-                })
-            );
-            WheelWizard.Core.RetroRewindPackage.Extract(path, destinationDirectory, progress, CancellationToken.None);
-            return Ok();
-        }
-        catch (Exception e)
-        {
-            return Fail(e);
-        }
-    }
-
-    private async Task<OperationResult> ApplyFileDeletionsBetweenVersions(SemVersion currentVersion, SemVersion targetVersion)
-    {
-        try
-        {
-            var deleteListResult = await GetFileDeletionList();
-            if (deleteListResult.IsFailure)
-                return Fail("Failed to get file deletion list");
-
-            var deleteList = deleteListResult.Value;
-            var deletionsToApply = GetDeletionsToApply(currentVersion, targetVersion, deleteList);
-
-            foreach (var file in deletionsToApply)
-            {
-                // The deletion list is server-controlled, so keep every resolved path inside the riivolution folder.
-                if (
-                    !PathSafetyHelper.TryGetPathWithinDirectory(
-                        PathManager.RiivolutionWhWzFolderPath,
-                        file.Path.TrimStart('/', '\\'),
-                        out var filePath
-                    )
-                )
-                    return Fail("Invalid file path detected. Please contact the developers.\n Server error: " + file.Path);
-
-                if (_fileSystem.File.Exists(filePath))
-                    _fileSystem.File.Delete(filePath);
-                else if (_fileSystem.Directory.Exists(filePath))
-                    _fileSystem.Directory.Delete(filePath, recursive: true);
-            }
-
-            return Ok();
-        }
-        catch (Exception e)
-        {
-            return Fail($"Failed to delete files: {e.Message}");
-        }
-    }
-
-    private struct DeletionData
-    {
-        public SemVersion Version;
-        public string Path;
-    }
-
-    private async Task<OperationResult<List<DeletionData>>> GetFileDeletionList()
-    {
-        var deleteList = new List<DeletionData>();
-
-        var deleteListOperation = await _api.CallApiAsync(api => api.GetDeletionFile());
-        if (deleteListOperation.IsFailure)
-            return Fail("Failed to get file deletion list");
-
-        var lines = deleteListOperation.Value.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-
-        foreach (var line in lines)
-        {
-            var parts = line.Split(' ', 2);
-            if (parts.Length < 2)
-                continue;
-            var deletionVersion = parts[0].Trim();
-            var path = parts[1].Trim();
-            if (string.IsNullOrWhiteSpace(deletionVersion) || string.IsNullOrWhiteSpace(path))
-                continue;
-            if (!SemVersion.TryParse(deletionVersion, out var parsedVersion))
-                return Fail("Failed to parse version");
-
-            var deletionData = new DeletionData { Version = parsedVersion, Path = path };
-            deleteList.Add(deletionData);
-        }
-
-        return deleteList;
-    }
-
-    private struct UpdateData
-    {
-        public SemVersion Version;
-        public string Url;
-        public string Description;
-    }
-
-    private async Task<List<UpdateData>> GetAllVersionData()
-    {
-        var versions = new List<UpdateData>();
-
-        var allVersionsResult = await _api.CallApiAsync(api => api.GetVersionFile());
-        if (allVersionsResult.IsFailure)
-            return new();
-        var lines = allVersionsResult.Value.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-
-        foreach (var line in lines)
-        {
-            var parts = line.Split(' ', 4);
-            if (parts.Length < 4)
-                continue;
-            var version = parts[0].Trim();
-            var url = parts[1].Trim();
-            var path = parts[2].Trim(); // Path unused in our program since on pc we manually decide where to extract
-            var description = parts[3].Trim();
-            if (string.IsNullOrWhiteSpace(version) || string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(path))
-                continue;
-            // Fix old URLs using HTTP to the new endpoint
-            var fixedUrl = url.Replace(Endpoints.OldRRUrl, Endpoints.RRUrl);
-            if (!SemVersion.TryParse(version, out var _))
-                continue;
-            var parsedVersion = SemVersion.Parse(version);
-            var updateData = new UpdateData
-            {
-                Version = parsedVersion,
-                Url = fixedUrl,
-                Description = description,
-            };
-            versions.Add(updateData);
-        }
-        return versions;
-    }
-
-    //todo: see if we can make this generic to the point we dont have to split up deletions and updates
-    private static List<UpdateData> GetUpdatesToApply(SemVersion currentVersion, List<UpdateData> allVersions)
-    {
-        var updatesToApply = new List<UpdateData>();
-        foreach (var update in allVersions)
-        {
-            if (update.Version.ComparePrecedenceTo(currentVersion) > 0)
-                updatesToApply.Add(update);
-        }
-        return updatesToApply;
-    }
-
-    private static List<DeletionData> GetDeletionsToApply(
-        SemVersion currentVersion,
-        SemVersion targetVersion,
-        List<DeletionData> allDeletions
-    )
-    {
-        var deletionsToApply = new List<DeletionData>();
-        allDeletions = allDeletions
-            .OrderByDescending(d => d.Version, Comparer<SemVersion>.Create((a, b) => a.ComparePrecedenceTo(b)))
-            .ToList();
-        foreach (var deletion in allDeletions)
-        {
-            if (deletion.Version.ComparePrecedenceTo(currentVersion) > 0 && deletion.Version.ComparePrecedenceTo(targetVersion) <= 0)
-                deletionsToApply.Add(deletion);
-        }
-
-        deletionsToApply.Reverse();
-        return deletionsToApply;
-    }
-
-    public Task<OperationResult> RemoveAsync(ProgressWindow progressWindow)
-    {
-        //where the RR distribution lives
-        var distributionDataDestination = _fileSystem.Path.Combine(PathManager.RiivolutionWhWzFolderPath, FolderName);
-        //where the RR wiiDisc xml file lives
-        var riivolutionDiscXMLFile = _fileSystem.Path.Combine(PathManager.RiivolutionWhWzFolderPath, XMLFolderName, $"{XMLFileName}.xml");
-
-        if (_fileSystem.Directory.Exists(distributionDataDestination))
-            _fileSystem.Directory.Delete(distributionDataDestination, recursive: true);
-        if (_fileSystem.File.Exists(riivolutionDiscXMLFile))
-            _fileSystem.File.Delete(riivolutionDiscXMLFile);
-
-        return Task.FromResult(Ok());
-    }
-
-    public async Task<OperationResult> ReinstallAsync(ProgressWindow progressWindow)
-    {
-        //Remove and install
-        var removeResult = await RemoveAsync(progressWindow);
-        if (removeResult.IsFailure)
-            return removeResult;
-
-        return await InstallAsync(progressWindow);
-    }
-
     public async Task<OperationResult<WheelWizardStatus>> GetCurrentStatusAsync()
     {
         if (!_settingsManager.PathsSetupCorrectly())
             return WheelWizardStatus.ConfigNotFinished;
 
-        var serverEnabled = await _api.CallApiAsync(api => api.Ping());
         var rrInstalled = GetCurrentVersion() != null;
 
-        if (serverEnabled.IsFailure)
+        using var http = new HttpClient();
+        var manager = new RetroRewindManager(http);
+        bool serverReachable;
+        try
+        {
+            await manager.PingAsync(default);
+            serverReachable = true;
+        }
+        catch (Exception)
+        {
+            serverReachable = false;
+        }
+
+        if (!serverReachable)
             return rrInstalled ? WheelWizardStatus.NoServerButInstalled : WheelWizardStatus.NoServer;
 
         if (!rrInstalled)
             return WheelWizardStatus.NotInstalled;
 
-        var currentVersion = GetCurrentVersion();
-        if (currentVersion == null)
-            return WheelWizardStatus.NotInstalled;
-
-        var retroRewindUpToDateResult = await IsRRUpToDate(currentVersion);
-        if (retroRewindUpToDateResult.IsFailure)
+        try
+        {
+            var currentVersion = GetCurrentVersion();
+            if (currentVersion == null)
+                return WheelWizardStatus.NotInstalled;
+            var latestVersion = await manager.LatestVersionAsync(default);
+            return currentVersion.ComparePrecedenceTo(latestVersion) >= 0
+                ? WheelWizardStatus.Ready
+                : WheelWizardStatus.OutOfDate;
+        }
+        catch (Exception)
+        {
             return Fail("Failed to check for updates");
-
-        var retroRewindUpToDate = retroRewindUpToDateResult.Value;
-        return !retroRewindUpToDate ? WheelWizardStatus.OutOfDate : WheelWizardStatus.Ready;
+        }
     }
 
     public SemVersion? GetCurrentVersion()
     {
-        var versionFilePath = _fileSystem.Path.Combine(PathManager.RiivolutionWhWzFolderPath, FolderName, "version.txt");
-        if (!_fileSystem.File.Exists(versionFilePath))
-            return null;
-
-        var version = WheelWizard.Core.RetroRewindPackage.InstalledVersion(_fileSystem.File.ReadAllText(versionFilePath));
-        return version == null ? null : SemVersion.Parse(version);
+        var version = RetroRewindManager.InstalledVersion(Root);
+        return version != null && SemVersion.TryParse(version, out var parsed) ? parsed : null;
     }
 }

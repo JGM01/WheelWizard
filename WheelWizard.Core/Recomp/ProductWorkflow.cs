@@ -139,10 +139,11 @@ public sealed class ProductWorkflow(string root, string toolsDirectory)
     {
         try
         {
+            var version = RetroRewindManager.InstalledVersion(Package);
             return new
             {
-                installed = Directory.Exists(Package),
-                version = RetroRewindPackage.Validate(Package),
+                installed = version != null,
+                version,
                 error = (string?)null,
             };
         }
@@ -170,20 +171,11 @@ public sealed class ProductWorkflow(string root, string toolsDirectory)
         if (Directory.Exists(Package))
             throw new InvalidOperationException("An RR installation already exists. This MVP only supports fresh installation.");
         using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
-        var stage = await new RetroRewindPackage(http).StageAsync(
-            Path.Combine(root, "Staging"),
+        await new RetroRewindManager(http).InstallAsync(
+            Package,
             new InlineProgress(p => emit("progress", p)),
             ct
         );
-        try
-        {
-            ct.ThrowIfCancellationRequested();
-            Directory.Move(Path.Combine(stage.Path, "content"), Package);
-        }
-        finally
-        {
-            Directory.Delete(stage.Path, true);
-        }
     }
 
     sealed class InlineProgress(Action<PackageProgress> action) : IProgress<PackageProgress>
