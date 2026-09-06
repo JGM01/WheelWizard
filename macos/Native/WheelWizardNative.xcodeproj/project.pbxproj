@@ -20,6 +20,7 @@
 		F000000000000000000000AF /* ModsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000039 /* ModsView.swift */; };
 		F000000000000000000000B2 /* ModBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0000000000000000000003B /* ModBrowserView.swift */; };
 		F000000000000000000000A9 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000034 /* SettingsView.swift */; };
+		F000000000000000000000B4 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000035 /* DesignSystem.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -36,6 +37,7 @@
 		F00000000000000000000039 /* ModsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModsView.swift; sourceTree = "<group>"; };
 		F0000000000000000000003B /* ModBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModBrowserView.swift; sourceTree = "<group>"; };
 		F00000000000000000000034 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		F00000000000000000000035 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		A00000000000000000000008 /* WheelWizardNative.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WheelWizardNative.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -80,6 +82,7 @@
 				F00000000000000000000039 /* ModsView.swift */,
 				F0000000000000000000003B /* ModBrowserView.swift */,
 				F00000000000000000000034 /* SettingsView.swift */,
+				F00000000000000000000035 /* DesignSystem.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -134,6 +137,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F000000000000000000000A9 /* SettingsView.swift in Sources */,
+				F000000000000000000000B4 /* DesignSystem.swift in Sources */,
 				F000000000000000000000A8 /* SetupView.swift in Sources */,
 				F000000000000000000000AF /* ModsView.swift in Sources */,
 				F000000000000000000000B2 /* ModBrowserView.swift in Sources */,

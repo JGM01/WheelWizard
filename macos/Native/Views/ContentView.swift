@@ -4,6 +4,7 @@ enum NavigationItem: Hashable {
     case product(Product.ID)
     case logs
     case mods
+    case prerequisites
 }
 
 struct ContentView: View {
@@ -16,23 +17,18 @@ struct ContentView: View {
         } detail: {
             detail
         }
-        .alert("Existing patches found", isPresented: Binding(get: { session.awaitingPatchChoice }, set: { _ in })) {
+        .alert("Existing Patches Found", isPresented: Binding(get: { session.awaitingPatchChoice }, set: { _ in })) {
             Button("Delete", role: .destructive) { session.choosePatches(delete: true) }
             Button("Keep") { session.choosePatches(delete: false) }
             Button("Cancel", role: .cancel) { session.cancelOperation() }
         } message: {
             Text("All mods are disabled. Delete existing runtime patches, or keep them active for this launch? Retained patches will be checked for conversion requirements.")
         }
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                SettingsLink()
-            }
-        }
     }
 
     private var sidebar: some View {
         List(selection: $selection) {
-            Section("Library") {
+            Section("Games") {
                 ForEach(session.products) { product in
                     ProductRow(product: product)
                         .tag(NavigationItem.product(product.id))
@@ -41,8 +37,10 @@ struct ContentView: View {
             Section("Tools") {
                 Label("Mods", systemImage: "shippingbox")
                     .tag(NavigationItem.mods)
-                Label("Activity Log", systemImage: "terminal")
+                Label("Activity Log", systemImage: "text.document")
                     .tag(NavigationItem.logs)
+                Label("Prerequisites", systemImage: "wrench.and.screwdriver")
+                    .tag(NavigationItem.prerequisites)
             }
         }
         .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 280)
@@ -63,13 +61,17 @@ struct ContentView: View {
                 ModsView()
             case .logs:
                 LogPane()
+            case .prerequisites:
+                SetupView()
+                    .navigationTitle("Prerequisites")
             case .none:
                 emptyState
             }
         }
-        .safeAreaInset(edge: .bottom) {
-            StatusView()
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Fixed-height, always-mounted bar — see StatusView for why this
+        // matters. The detail pane's frame never changes because of it.
+        .safeAreaInset(edge: .bottom, spacing: 0) { StatusView() }
     }
 
     private var emptyState: some View {
@@ -97,9 +99,7 @@ private struct ProductRow: View {
                     .foregroundStyle(isRetroRewind ? .purple : .accentColor)
             }
             Spacer()
-            Circle()
-                .fill(product.ready ? Color.green : Color.secondary.opacity(0.3))
-                .frame(width: 6, height: 6)
+            StatusDot(on: product.ready)
         }
         .contentShape(Rectangle())
     }
@@ -119,13 +119,26 @@ private struct LogPane: View {
     }
 
     var body: some View {
-        ScrollView {
-            Text(filteredLines.joined(separator: "\n"))
-                .font(.system(.caption, design: .monospaced))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
+        Group {
+            if activity.log.isEmpty {
+                ContentUnavailableView(
+                    "No Activity Yet",
+                    systemImage: "terminal",
+                    description: Text("Operations will appear here as they run.")
+                )
+            } else if !filterText.isEmpty && filteredLines.isEmpty {
+                ContentUnavailableView.search(text: filterText)
+            } else {
+                ScrollView {
+                    Text(filteredLines.joined(separator: "\n"))
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                }
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .textBackgroundColor))
         .navigationTitle("Activity Log")
         .searchable(text: $filterText, placement: .toolbar, prompt: "Filter log")

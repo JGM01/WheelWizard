@@ -23,6 +23,9 @@ struct ModsView: View {
         VStack(spacing: 0) {
             ForEach(Array(session.mods.enumerated()), id: \.element.id) { index, mod in
                 row(for: mod, index: index)
+                if mod.id != session.mods.last?.id {
+                    Divider().padding(.leading, 26)
+                }
             }
         }
         .overlay(alignment: .top) { insertionIndicator }
@@ -55,6 +58,8 @@ struct ModsView: View {
             }
             Spacer(minLength: 8)
             Button("Remove…", role: .destructive) { removal = mod }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.red)
         }
         .frame(height: rowPitch)
         .disabled(disabled)
@@ -101,77 +106,26 @@ struct ModsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: Metrics.sectionSpacing) {
                 Text("Enabled mods apply on the next Retro Rewind launch. Files needing conversion must be disabled or converted before playing; vanilla remains unchanged.")
                     .foregroundStyle(.secondary)
-                HStack {
-                    Button("Import Archive…", action: chooseArchive)
-                    Button("Browse Mods…") { openWindow(id: "mod-catalog") }
-                        .help("Search GameBanana for Mario Kart Wii mods to install")
-                    Button("Refresh") { session.refreshMods() }
-                    Spacer()
-                    Button("Preview Conflicts") { session.modCommand("mods-preview") }
-                        .disabled(session.mods.isEmpty)
-                }
-                .disabled(disabled)
+
+                toolbar
 
                 if !session.resultText(for: "mods").isEmpty {
-                    Text(session.resultText(for: "mods"))
-                        .foregroundStyle(.red)
-                        .textSelection(.enabled)
+                    Callout(kind: .error, title: "Mods Action Failed", message: session.resultText(for: "mods"))
                 }
                 if session.busy {
                     ProgressView("Working…")
                 }
-                if session.modsLoaded && session.mods.isEmpty {
-                    ContentUnavailableView("No Mods", systemImage: "shippingbox", description: Text("Import a ZIP, 7z, or RAR archive to start a library."))
+
+                library
+
+                if session.mods.contains(where: { $0.requiresAttention }) {
+                    attentionSection
                 }
-                if !session.mods.isEmpty {
-                    modRows
-                }
-                ForEach(session.mods.filter { $0.requiresAttention }) { mod in
-                    DisclosureGroup("\(mod.title) — \(mod.inspectionError == nil ? "conversion required" : "could not inspect files")") {
-                        if let error = mod.inspectionError { Text(error).font(.caption).textSelection(.enabled) }
-                        ForEach(Array(mod.findings.enumerated()), id: \.offset) { _, finding in
-                            Text("\(finding.relativePath): \(finding.reason)")
-                                .font(.caption).textSelection(.enabled)
-                        }
-                    }
-                }
-                Divider()
-                HStack {
-                    Text("File Preview").font(.headline)
-                    Spacer()
-                    Toggle("All Files", isOn: $showAllFiles).toggleStyle(.switch)
-                }
-                Text("Earlier mods win overlapping destination files. Tagged archives stay separate; conflicts inside archives are not checked.")
-                    .font(.caption).foregroundStyle(.secondary)
-                if session.modPreview == nil {
-                    Text("Choose Preview Conflicts to scan the saved library.").foregroundStyle(.secondary)
-                } else if !session.mods.contains(where: { $0.isEnabled }) {
-                    Text("No mods are enabled.").foregroundStyle(.secondary)
-                } else if previewFiles.isEmpty {
-                    Text(showAllFiles ? "No launch files found." : "No file-level conflicts found.").foregroundStyle(.secondary)
-                }
-                ForEach(previewFiles) { file in
-                    DisclosureGroup {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Winner: \(file.winner.modTitle)\n\(file.winner.sourcePath)")
-                            ForEach(Array(file.overwritten.enumerated()), id: \.offset) { _, source in
-                                Text("Overwritten: \(source.modTitle)\n\(source.sourcePath)")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .font(.caption).textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    } label: {
-                        HStack {
-                            Text(file.destination)
-                            Spacer()
-                            Text(file.winner.modTitle).foregroundStyle(.secondary)
-                        }
-                    }
-                }
+
+                filePreviewSection
             }
             .padding(24)
         }
@@ -203,6 +157,98 @@ struct ModsView: View {
             Button("Cancel", role: .cancel) { removal = nil }
         } message: {
             Text("Delete \(removal?.title ?? "this mod") from the managed library? The original archive is kept.")
+        }
+    }
+
+    private var toolbar: some View {
+        HStack {
+            Button("Import Archive…", action: chooseArchive)
+            Button("Browse Mods…") { openWindow(id: "mod-catalog") }
+                .buttonStyle(.borderedProminent)
+                .help("Search GameBanana for Mario Kart Wii mods to install")
+            Button("Refresh") { session.refreshMods() }
+            Spacer()
+            Button("Preview Conflicts") { session.modCommand("mods-preview") }
+                .disabled(session.mods.isEmpty)
+        }
+        .disabled(disabled)
+    }
+
+    @ViewBuilder
+    private var library: some View {
+        if session.modsLoaded && session.mods.isEmpty {
+            ContentUnavailableView("No Mods", systemImage: "shippingbox", description: Text("Import a ZIP, 7z, or RAR archive to start a library."))
+        } else if !session.mods.isEmpty {
+            Card { modRows }
+        }
+    }
+
+    private var attentionSection: some View {
+        Card {
+            Label("Needs Attention", systemImage: "exclamationmark.triangle.fill")
+                .font(.headline)
+                .foregroundStyle(.orange)
+            ForEach(session.mods.filter { $0.requiresAttention }) { mod in
+                DisclosureGroup("\(mod.title) — \(mod.inspectionError == nil ? "conversion required" : "could not inspect files")") {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let error = mod.inspectionError {
+                            Text(error).font(.caption).textSelection(.enabled)
+                        }
+                        ForEach(Array(mod.findings.enumerated()), id: \.offset) { _, finding in
+                            Text("\(finding.relativePath): \(finding.reason)")
+                                .font(.caption).textSelection(.enabled)
+                        }
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+                }
+            }
+        }
+    }
+
+    private var filePreviewSection: some View {
+        Card {
+            HStack {
+                Text("File Preview").font(.headline)
+                Spacer()
+                Toggle("All Files", isOn: $showAllFiles)
+                    .toggleStyle(.switch)
+                    // Nothing to toggle between until a preview exists —
+                    // leaving this live would let someone flip a control
+                    // that visibly does nothing.
+                    .disabled(session.modPreview == nil)
+            }
+            Text("Earlier mods win overlapping destination files. Tagged archives stay separate; conflicts inside archives are not checked.")
+                .font(.caption).foregroundStyle(.secondary)
+
+            if session.modPreview == nil {
+                Text("Choose Preview Conflicts to scan the saved library.").foregroundStyle(.secondary)
+            } else if !session.mods.contains(where: { $0.isEnabled }) {
+                Text("No mods are enabled.").foregroundStyle(.secondary)
+            } else if previewFiles.isEmpty {
+                Text(showAllFiles ? "No launch files found." : "No file-level conflicts found.").foregroundStyle(.secondary)
+            }
+
+            ForEach(previewFiles) { file in
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Winner: \(file.winner.modTitle)\n\(file.winner.sourcePath)")
+                        ForEach(Array(file.overwritten.enumerated()), id: \.offset) { _, source in
+                            Text("Overwritten: \(source.modTitle)\n\(source.sourcePath)")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .font(.caption).textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 4)
+                } label: {
+                    HStack {
+                        Text(file.destination)
+                        Spacer()
+                        Text(file.winner.modTitle).foregroundStyle(.secondary)
+                    }
+                }
+            }
         }
     }
 

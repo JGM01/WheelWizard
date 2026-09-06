@@ -61,12 +61,15 @@ struct ModBrowserView: View {
                 .foregroundStyle(.secondary)
                 .help("Close")
             }
-            Text("Powered by GameBanana")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Toggle("Patches only", isOn: $patchesOnly)
-                .toggleStyle(.switch)
-                .controlSize(.small)
+            HStack {
+                Text("Powered by GameBanana")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Toggle("Patches only", isOn: $patchesOnly)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+            }
             Divider()
             if busy && session.catalogResults.isEmpty {
                 Spacer()
@@ -97,10 +100,7 @@ struct ModBrowserView: View {
                 }
             }
             if !error.isEmpty {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
+                Callout(kind: .error, title: "Catalog Error", message: error)
             }
         }
         .padding(12)
@@ -153,14 +153,11 @@ struct ModBrowserView: View {
                     Spacer()
                 }
             } else if !error.isEmpty {
-                VStack(spacing: 10) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                        .foregroundStyle(.orange)
-                    Text(error)
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                        .textSelection(.enabled)
+                VStack(spacing: 12) {
+                    Spacer()
+                    Callout(kind: .error, title: "Couldn't Load This Mod", message: error)
+                        .frame(maxWidth: 420)
+                    Spacer()
                 }
                 .padding(24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
