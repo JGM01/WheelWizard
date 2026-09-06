@@ -1,0 +1,371 @@
+using System.IO.Abstractions;
+using System.Security.Cryptography;
+using System.Text.Json;
+using WheelWizard.Core;
+
+namespace WheelWizard.Host;
+
+public sealed class Workflow(string root, string toolsDirectory)
+{
+    public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    public string Root => root;
+    public string Runtime => Path.Combine(root, "Runtime");
+    public string Config => Path.Combine(Runtime, "UserData", "Config.toml");
+    public string Package => Path.Combine(root, "RetroRewind");
+    public string Logs => Path.Combine(root, "Logs");
+    readonly RuntimeConfiguration config = new(new Testably.Abstractions.RealFileSystem());
+    static readonly (string Id, string Name, string App)[] Products =
+    [
+        ("base", "Mario Kart Wii", "WiiCompiled"),
+        ("retro-rewind", "Retro Rewind", "RetroRewind"),
+    ];
+
+    static string App(string id) => Products.FirstOrDefault(p => p.Id == id).App ?? throw new ArgumentException("Unknown product");
+
+    string Executable(string id) => Path.Combine(Runtime, App(id) + ".app", "Contents", "MacOS", App(id));
+
+    string Receipt(string id) => Path.Combine(Runtime, id + ".json");
+
+    public SetupInput Discover(SetupInput s) =>
+        s with
+        {
+            Cmake = Tool(s.Cmake, "cmake"),
+            Ninja = Tool(s.Ninja, "ninja"),
+            Nodtool = Tool(s.Nodtool, "nodtool"),
+            Translator = Tool(s.Translator, "Translator.Cli"),
+        };
+
+    string Tool(string value, string name)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+            return value;
+        return new[] { toolsDirectory, Path.Combine(toolsDirectory, "translator"), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin" }
+                .Select(p => Path.Combine(p, name))
+                .FirstOrDefault(File.Exists) ?? "";
+    }
+
+    public string[] Preflight(SetupInput s)
+    {
+        var errors = new List<string>();
+        if (
+            !OperatingSystem.IsMacOS()
+            || System.Runtime.InteropServices.RuntimeInformation.OSArchitecture != System.Runtime.InteropServices.Architecture.Arm64
+        )
+            errors.Add("Apple Silicon macOS is required");
+        foreach (
+            var (name, path) in new[]
+            {
+                ("WBFS", s.Wbfs),
+                ("build script", Path.Combine(s.Workspace, "Launcher/local-build-macos.command")),
+                ("translation project", Path.Combine(s.Workspace, "projects/mkwii/recomp.yml")),
+                ("cmake", s.Cmake),
+                ("ninja", s.Ninja),
+                ("nodtool", s.Nodtool),
+                ("translator", s.Translator),
+                ("clang", "/usr/bin/clang"),
+                ("codesign", "/usr/bin/codesign"),
+            }
+        )
+            if (!Path.IsPathFullyQualified(path) || !File.Exists(path))
+                errors.Add($"Missing {name}: {path}");
+        foreach (var path in new[] { s.Cmake, s.Ninja, s.Nodtool, s.Translator })
+            if (
+                File.Exists(path)
+                && !OperatingSystem.IsWindows()
+                && (File.GetUnixFileMode(path) & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) == 0
+            )
+                errors.Add($"Not executable: {path}");
+        return errors.ToArray();
+    }
+
+    static async Task<string> Hash(string path, CancellationToken ct)
+    {
+        await using var stream = File.OpenRead(path);
+        return Convert.ToHexString(await SHA256.HashDataAsync(stream, ct));
+    }
+
+    async Task<BuildIdentity> Identity(SetupInput s, string id, CancellationToken ct)
+    {
+        string revision = "";
+        var exit = await ChildProcess.Run(
+            "/usr/bin/git",
+            ["-C", s.Workspace, "rev-parse", "HEAD"],
+            root,
+            (stream, line) =>
+            {
+                if (stream == "stdout")
+                    revision += line;
+            },
+            ct
+        );
+        if (exit != 0 || revision.Length == 0)
+            throw new InvalidOperationException("Cannot determine workspace revision");
+        return new(
+            Path.GetFullPath(s.Wbfs),
+            await Hash(s.Wbfs, ct),
+            Path.GetFullPath(s.Workspace),
+            revision,
+            id == "retro-rewind" ? await Hash(Path.Combine(Package, "RetroRewind6/Binaries/Code.pul"), ct) : "",
+            id == "base" ? "base" : "offline"
+        );
+    }
+
+    public async Task<ProductStatus[]> Status(SetupInput s, CancellationToken ct)
+    {
+        Directory.CreateDirectory(root);
+        var statuses = new List<ProductStatus>();
+        foreach (var p in Products)
+        {
+            bool ready = false;
+            string detail = "Build required";
+            try
+            {
+                if (File.Exists(Receipt(p.Id)) && File.Exists(Executable(p.Id)))
+                {
+                    var receipt = JsonSerializer.Deserialize<BuildReceipt>(await File.ReadAllTextAsync(Receipt(p.Id), ct), Json);
+                    ready = receipt?.Product == p.Id && receipt.Input == await Identity(s, p.Id, ct);
+                    detail = ready ? "Ready" : "Inputs changed — rebuild required";
+                }
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                detail = e.Message;
+            }
+            statuses.Add(new(p.Id, p.Name, ready, detail));
+        }
+        return statuses.ToArray();
+    }
+
+    public object PackageStatus()
+    {
+        try
+        {
+            return new
+            {
+                installed = Directory.Exists(Package),
+                version = RetroRewindPackage.Validate(Package),
+                error = (string?)null,
+            };
+        }
+        catch (Exception e)
+        {
+            return new
+            {
+                installed = Directory.Exists(Package),
+                version = (string?)null,
+                error = e.Message,
+            };
+        }
+    }
+
+    void RequirePreflight(SetupInput s)
+    {
+        var errors = Preflight(s);
+        if (errors.Length > 0)
+            throw new InvalidOperationException(string.Join("\n", errors));
+    }
+
+    public async Task Install(SetupInput s, Action<string, object> emit, CancellationToken ct)
+    {
+        RequirePreflight(s);
+        if (Directory.Exists(Package))
+            throw new InvalidOperationException("An RR installation already exists. This MVP only supports fresh installation.");
+        using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        var stage = await new RetroRewindPackage(http).StageAsync(
+            Path.Combine(root, "Staging"),
+            new InlineProgress(p => emit("progress", p)),
+            ct
+        );
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            Directory.Move(Path.Combine(stage.Path, "content"), Package);
+        }
+        finally
+        {
+            Directory.Delete(stage.Path, true);
+        }
+    }
+
+    sealed class InlineProgress(Action<PackageProgress> action) : IProgress<PackageProgress>
+    {
+        public void Report(PackageProgress value) => action(value);
+    }
+
+    public static List<string> BuildArguments(SetupInput s, string id, string stage, string package)
+    {
+        _ = App(id);
+        List<string> args =
+        [
+            Path.Combine(s.Workspace, "Launcher/local-build-macos.command"),
+            "--workspace",
+            s.Workspace,
+            "--game",
+            s.Wbfs,
+            "--nodtool",
+            s.Nodtool,
+            "--translator-bin",
+            s.Translator,
+            "--cmake",
+            s.Cmake,
+            "--ninja",
+            s.Ninja,
+            "--profile",
+            id == "base" ? "base" : "both",
+            "--output-dir",
+            stage,
+        ];
+        if (id == "retro-rewind")
+            args.AddRange(
+                [
+                    "--base-output-dir",
+                    stage,
+                    "--retro-rewind-package-dir",
+                    Path.Combine(package, "RetroRewind6"),
+                    "--skip-retro-wfc-payload",
+                ]
+            );
+        return args;
+    }
+
+    public async Task Build(SetupInput s, string id, Action<string, object> emit, CancellationToken ct)
+    {
+        RequirePreflight(s);
+        _ = App(id);
+        if (id == "retro-rewind")
+            RetroRewindPackage.Validate(Package);
+        var selected = id == "base" ? new[] { "base" } : new[] { "base", "retro-rewind" };
+        var identities = new Dictionary<string, BuildIdentity>();
+        foreach (var product in selected)
+            identities[product] = await Identity(s, product, ct);
+        var stage = Path.Combine(root, "Staging", "build-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(stage);
+        try
+        {
+            var scratch = Path.Combine(stage, "tmp");
+            Directory.CreateDirectory(scratch);
+            int exit = await ChildProcess.Run(
+                "/bin/bash",
+                BuildArguments(s, id, stage, Package),
+                s.Workspace,
+                (stream, line) =>
+                {
+                    emit(line.StartsWith("MKWCBUILD:STEP:") ? "progress" : "log", new { stage = line, stream });
+                },
+                ct,
+                new Dictionary<string, string> { ["TMPDIR"] = scratch + Path.DirectorySeparatorChar }
+            );
+            if (exit != 0)
+                throw new InvalidOperationException($"Build exited with code {exit}");
+            foreach (var product in selected)
+            {
+                if (!File.Exists(Path.Combine(stage, App(product) + ".app", "Contents/MacOS", App(product))))
+                    throw new InvalidDataException("Build did not produce " + product);
+                if (identities[product] != await Identity(s, product, ct))
+                    throw new InvalidOperationException("Inputs changed during compilation");
+                await File.WriteAllTextAsync(
+                    Path.Combine(stage, product + ".json"),
+                    JsonSerializer.Serialize(new BuildReceipt(product, identities[product]), Json),
+                    ct
+                );
+            }
+            ct.ThrowIfCancellationRequested();
+            // Publication is deliberately non-cancellable; rollback includes receipts and config.
+            Directory.CreateDirectory(Runtime);
+            var stagedConfig = Path.Combine(stage, "UserData/Config.toml");
+            Directory.CreateDirectory(Path.GetDirectoryName(stagedConfig)!);
+            if (File.Exists(Config))
+                File.Copy(Config, stagedConfig);
+            Configure(s, id, stagedConfig);
+            File.WriteAllText(Path.Combine(stage, "portable.txt"), "");
+            Publish(
+                stage,
+                Runtime,
+                selected.SelectMany(p => new[] { App(p) + ".app", p + ".json" }).Concat(["UserData/Config.toml", "portable.txt"]).ToArray()
+            );
+        }
+        finally
+        {
+            if (Directory.Exists(stage) && !File.Exists(Path.Combine(stage, "recovery.required")))
+                Directory.Delete(stage, true);
+        }
+    }
+
+    public static void Publish(string stage, string destination, string[] names)
+    {
+        var backup = Path.Combine(stage, "previous");
+        Directory.CreateDirectory(backup);
+        var moved = new List<string>();
+        var saved = new List<string>();
+        static void Move(string a, string b)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(b)!);
+            if (Directory.Exists(a))
+                Directory.Move(a, b);
+            else
+                File.Move(a, b);
+        }
+        try
+        {
+            foreach (var name in names)
+            {
+                var target = Path.Combine(destination, name);
+                if (File.Exists(target) || Directory.Exists(target))
+                {
+                    Move(target, Path.Combine(backup, name));
+                    saved.Add(name);
+                }
+                Move(Path.Combine(stage, name), target);
+                moved.Add(name);
+            }
+        }
+        catch (Exception publicationError)
+        {
+            try
+            {
+                foreach (var name in moved.AsEnumerable().Reverse())
+                    Move(Path.Combine(destination, name), Path.Combine(stage, name));
+                foreach (var name in saved.AsEnumerable().Reverse())
+                    Move(Path.Combine(backup, name), Path.Combine(destination, name));
+            }
+            catch (Exception rollbackError)
+            {
+                File.WriteAllText(Path.Combine(stage, "recovery.required"), publicationError + "\n" + rollbackError);
+                throw new AggregateException(
+                    $"Publication rollback needs recovery; preserved files at {stage}",
+                    publicationError,
+                    rollbackError
+                );
+            }
+            throw;
+        }
+    }
+
+    void Configure(SetupInput s, string id, string? path = null)
+    {
+        config.Write(
+            path ?? Config,
+            [
+                new("paths", "dvd_root", RuntimeConfiguration.Format(Path.Combine(s.Workspace, "Assets/DATA"))),
+                new("paths", "retro_rewind_root", RuntimeConfiguration.Format(id == "base" ? "" : Path.Combine(Package, "RetroRewind6"))),
+                new("paths", "overlay_roots", "[]"),
+                new("network", "enabled", "false"),
+            ],
+            true
+        );
+    }
+
+    public RuntimeSettings ReadSettings() => config.ReadSettings(Config);
+
+    public void WriteSettings(RuntimeSettings settings) => config.WriteSettings(Config, settings);
+
+    public async Task<int> Launch(SetupInput s, string id, Action<string, object> emit, CancellationToken ct)
+    {
+        _ = App(id);
+        if (!(await Status(s, ct)).Single(p => p.Id == id).Ready)
+            throw new InvalidOperationException("Product is not ready; rebuild with current inputs");
+        Configure(s, id);
+        emit("log", new { stage = $"Launching {id}; config={Config}; runtime logs={Path.Combine(Runtime, "UserData/Logs")}" });
+        return await ChildProcess.Run(Executable(id), [], Runtime, (stream, line) => emit("log", new { stage = line, stream }), ct);
+    }
+}

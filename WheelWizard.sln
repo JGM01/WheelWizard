@@ -6,6 +6,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WheelWizard.Test", "WheelWi
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WheelWizard.Core", "WheelWizard.Core\WheelWizard.Core.csproj", "{F9999A68-D5BF-4860-9AF1-B20C2CBD23F5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WheelWizard.Host", "WheelWizard.Host\WheelWizard.Host.csproj", "{25C761E2-085C-4EC3-B2B2-DA4851792546}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WheelWizard.Core.Test", "WheelWizard.Core.Test\WheelWizard.Core.Test.csproj", "{7033BF2C-F8B6-4BD2-B4DF-2CD82C1A0BC0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -24,5 +28,13 @@ Global
 		{F9999A68-D5BF-4860-9AF1-B20C2CBD23F5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F9999A68-D5BF-4860-9AF1-B20C2CBD23F5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F9999A68-D5BF-4860-9AF1-B20C2CBD23F5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{25C761E2-085C-4EC3-B2B2-DA4851792546}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{25C761E2-085C-4EC3-B2B2-DA4851792546}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{25C761E2-085C-4EC3-B2B2-DA4851792546}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{25C761E2-085C-4EC3-B2B2-DA4851792546}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7033BF2C-F8B6-4BD2-B4DF-2CD82C1A0BC0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7033BF2C-F8B6-4BD2-B4DF-2CD82C1A0BC0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7033BF2C-F8B6-4BD2-B4DF-2CD82C1A0BC0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7033BF2C-F8B6-4BD2-B4DF-2CD82C1A0BC0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
