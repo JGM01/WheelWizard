@@ -100,6 +100,25 @@ try
                             await workflow.Install(setup, Emit, ct);
                             result = workflow.PackageStatus();
                             break;
+                        case "package-update":
+                            await workflow.UpdateRR(setup, Emit, ct);
+                            result = new
+                            {
+                                products = await workflow.Status(setup, ct),
+                                package = workflow.PackageStatus(),
+                            };
+                            break;
+                        case "package-remove":
+                            workflow.RemoveRR();
+                            result = new
+                            {
+                                products = await workflow.Status(setup, ct),
+                                package = workflow.PackageStatus(),
+                            };
+                            break;
+                        case "package-state":
+                            result = await workflow.PackageState(ct);
+                            break;
                         case "build":
                             await workflow.Build(setup, req.Product ?? "", Emit, ct);
                             result = new { products = await workflow.Status(setup, CancellationToken.None) };

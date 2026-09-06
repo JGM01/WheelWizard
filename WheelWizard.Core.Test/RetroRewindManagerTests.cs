@@ -158,6 +158,92 @@ public sealed class RetroRewindManagerTests : IDisposable
         Assert.False(File.Exists(Path.Combine(InstallRoot, "RetroRewind6", "obsolete.txt")));
     }
 
+    [Fact]
+    public async Task StateReflectsInstalledAndLatest()
+    {
+        Directory.CreateDirectory(Path.Combine(InstallRoot, "RetroRewind6"));
+        File.WriteAllText(Path.Combine(InstallRoot, "RetroRewind6", "version.txt"), "3.6.0");
+        using var http = new HttpClient(
+            new Handler(
+                (req, ct) =>
+                    Task.FromResult(
+                        new HttpResponseMessage(HttpStatusCode.OK)
+                        {
+                            Content = new StringContent("3.6.0 u x old\n3.7.0 u x new\n"),
+                        }
+                    )
+            )
+        );
+
+        var state = await new RetroRewindManager(http).StateAsync(InstallRoot, default);
+
+        Assert.True(state.Installed);
+        Assert.Equal("3.6.0", state.Version);
+        Assert.Equal("3.7.0", state.Latest);
+        Assert.True(state.OutOfDate);
+        Assert.True(state.ServerReachable);
+    }
+
+    [Fact]
+    public async Task StateIsUpToDateWhenInstalledMatchesLatest()
+    {
+        Directory.CreateDirectory(Path.Combine(InstallRoot, "RetroRewind6"));
+        File.WriteAllText(Path.Combine(InstallRoot, "RetroRewind6", "version.txt"), "3.7.0");
+        using var http = new HttpClient(
+            new Handler(
+                (req, ct) =>
+                    Task.FromResult(
+                        new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("3.7.0 u x new\n") }
+                    )
+            )
+        );
+
+        var state = await new RetroRewindManager(http).StateAsync(InstallRoot, default);
+
+        Assert.True(state.Installed);
+        Assert.True(state.ServerReachable);
+        Assert.False(state.OutOfDate);
+    }
+
+    [Fact]
+    public async Task StateReportsServerUnreachable()
+    {
+        Directory.CreateDirectory(Path.Combine(InstallRoot, "RetroRewind6"));
+        File.WriteAllText(Path.Combine(InstallRoot, "RetroRewind6", "version.txt"), "3.6.0");
+        using var http = new HttpClient(
+            new Handler(
+                (req, ct) =>
+                    Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable))
+            )
+        );
+
+        var state = await new RetroRewindManager(http).StateAsync(InstallRoot, default);
+
+        Assert.True(state.Installed);
+        Assert.False(state.ServerReachable);
+        Assert.Null(state.Latest);
+        Assert.False(state.OutOfDate);
+    }
+
+    [Fact]
+    public async Task StateNotInstalledStaysLocal()
+    {
+        using var http = new HttpClient(
+            new Handler(
+                (req, ct) =>
+                    Task.FromResult(
+                        new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("3.7.0 u x new\n") }
+                    )
+            )
+        );
+
+        var state = await new RetroRewindManager(http).StateAsync(InstallRoot, default);
+
+        Assert.False(state.Installed);
+        Assert.True(state.ServerReachable);
+        Assert.False(state.OutOfDate);
+    }
+
     sealed class Handler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> response) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage r, CancellationToken ct) => response(r, ct);

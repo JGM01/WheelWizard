@@ -13,8 +13,13 @@ struct WheelWizardApp: App {
                 .onAppear { delegate.session = session }
         }
         Settings {
-            SettingsView()
-                .environmentObject(session)
+            TabView {
+                SetupView()
+                    .tabItem { Label("Prerequisites", systemImage: "wrench.and.screwdriver") }
+                SettingsView()
+                    .tabItem { Label("Playback", systemImage: "slider.horizontal.3") }
+            }
+            .environmentObject(session)
         }
     }
 }

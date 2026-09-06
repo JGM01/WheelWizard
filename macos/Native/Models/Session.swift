@@ -10,6 +10,7 @@ final class Session: ObservableObject {
     ]
     @Published var settings = RuntimeSettings()
     @Published var package = PackageInfo()
+    @Published var domainResults = [String: String]()
     @Published var preflightErrors = [String]()
     @Published var busy = false
     @Published var connected = false
@@ -21,7 +22,10 @@ final class Session: ObservableObject {
     private var process: Process?
     private var input: FileHandle?
     private var pending = [String: String]()
+    private var pendingDomain = [String: String]()
     private var generation = UUID()
+    private var wantsPackageState = false
+    private var packageStateFeedback = false
 
     let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/WheelWizardNative")
     var preferences: URL { root.appendingPathComponent("preferences.json") }
@@ -122,6 +126,10 @@ final class Session: ObservableObject {
         connected = false
         busy = false
         pending.removeAll()
+        pendingDomain.removeAll()
+        domainResults.removeAll()
+        wantsPackageState = false
+        packageStateFeedback = false
         input = nil
         if let task = process, task.isRunning {
             task.terminate()
@@ -188,19 +196,53 @@ final class Session: ObservableObject {
 
     func checkPrerequisites() {
         persist()
-        send("preflight")
+        send("preflight", domain: "setup")
     }
 
     func installRR() {
-        send("install")
+        send("install", domain: "retro-rewind")
+    }
+
+    func updateRR() {
+        send("package-update", domain: "retro-rewind")
+    }
+
+    func removeRR() {
+        send("package-remove", domain: "retro-rewind")
+    }
+
+    func checkForRRUpdates() {
+        requestPackageState(feedback: true)
+    }
+
+    private func requestPackageState(feedback: Bool) {
+        guard connected, !busy, let input else { return }
+        packageStateFeedback = feedback
+        let id = UUID().uuidString
+        do {
+            let request: [String: Any] = [
+                "version": 1,
+                "id": id,
+                "command": "package-state",
+                "setup": try JSONSerialization.jsonObject(with: JSONEncoder().encode(setup)),
+            ]
+            var data = try JSONSerialization.data(withJSONObject: request)
+            data.append(10)
+            pending[id] = "package-state"
+            pendingDomain[id] = "retro-rewind"
+            try input.write(contentsOf: data)
+        } catch {
+            packageStateFeedback = false
+            lost(error.localizedDescription)
+        }
     }
 
     func build(product id: String) {
-        send("build", product: id)
+        send("build", product: id, domain: id)
     }
 
     func launch(product id: String) {
-        send("launch", product: id)
+        send("launch", product: id, domain: id)
     }
 
     func cancelOperation() {
@@ -213,7 +255,7 @@ final class Session: ObservableObject {
         send("config-write")
     }
 
-    func send(_ command: String, product: String? = nil) {
+    func send(_ command: String, product: String? = nil, domain: String? = nil) {
         guard connected, let input, (!busy || command == "cancel") else { return }
         let id = UUID().uuidString
         do {
@@ -232,6 +274,9 @@ final class Session: ObservableObject {
             var data = try JSONSerialization.data(withJSONObject: request)
             data.append(10)
             pending[id] = command
+            if let domain {
+                pendingDomain[id] = domain
+            }
             if command != "cancel" {
                 activity.progress = nil
                 busy = true
@@ -243,6 +288,15 @@ final class Session: ObservableObject {
         } catch {
             lost(error.localizedDescription)
         }
+    }
+
+    func resultText(for domain: String) -> String {
+        domainResults[domain] ?? ""
+    }
+
+    private func setResult(_ domain: String?, _ text: String) {
+        guard let domain, !domain.isEmpty else { return }
+        domainResults[domain] = text
     }
 
     func receive(_ line: String) {
@@ -271,17 +325,20 @@ final class Session: ObservableObject {
         }
         guard kind == "result" else { return }
         pending.removeValue(forKey: id)
+        let domain = pendingDomain.removeValue(forKey: id) ?? ""
         if command == "cancel" { return }
         busy = false
         let outcome = event["outcome"] as? String ?? "failure"
         if outcome != "success" {
-            activity.message = outcome == "cancelled" ? "Cancelled" : event["error"] as? String ?? "Operation failed"
-            activity.append(activity.message)
+            let text = outcome == "cancelled" ? "Cancelled" : event["error"] as? String ?? "Operation failed"
+            activity.message = text
+            activity.append(text)
+            setResult(domain, text)
             if command == "launch" {
                 send("config-read")
             }
         } else {
-            if command != "config-read" && command != "status" {
+            if command != "config-read" && command != "status" && command != "package-state" {
                 activity.message = "Ready"
             }
             if let array = payload["products"],
@@ -303,24 +360,67 @@ final class Session: ObservableObject {
                 preflightErrors = payload["errors"] as? [String] ?? []
                 if !preflightErrors.isEmpty {
                     activity.append(preflightErrors.joined(separator: "\n"))
-                    activity.message = "Setup needs attention"
                 }
+                setResult(domain, preflightErrors.isEmpty ? "" : "Setup needs attention")
                 send("status")
             case "status":
                 send("config-read")
             case "install":
                 updatePackage(payload)
+                let installed = "Retro Rewind installed"
+                setResult(domain, installed)
+                wantsPackageState = true
                 send("status")
+            case "package-update":
+                updatePackage(payload)
+                let updated = package.version.isEmpty
+                    ? "Retro Rewind updated — rebuild required"
+                    : "Retro Rewind updated to \(package.version) — rebuild required"
+                setResult(domain, updated)
+                activity.append(updated)
+                wantsPackageState = true
+                send("status")
+            case "package-remove":
+                updatePackage(payload)
+                let removed = "Removed Retro Rewind"
+                setResult(domain, removed)
+                activity.append(removed)
+                wantsPackageState = true
+                send("status")
+            case "package-state":
+                updatePackageState(payload)
+                if packageStateFeedback {
+                    packageStateFeedback = false
+                    let text: String
+                    if !package.serverReachable {
+                        text = "Update check failed — couldn't reach the server"
+                    } else if !package.installed {
+                        text = "Retro Rewind is not installed"
+                    } else if package.outOfDate {
+                        text = "Update available: \(package.latest)"
+                    } else {
+                        text = "Retro Rewind is up to date"
+                    }
+                    setResult(domain, text)
+                    activity.append(text)
+                }
             case "config-read", "config-write":
                 if let data = try? JSONSerialization.data(withJSONObject: payload),
                    let decoded = try? JSONDecoder().decode(RuntimeSettings.self, from: data) {
                     settings = decoded
                 }
             case "launch":
+                setResult(domain, "")
                 send("config-read")
+            case "build":
+                setResult(domain, "")
             default:
                 break
             }
+        }
+        if wantsPackageState && !busy {
+            wantsPackageState = false
+            requestPackageState(feedback: false)
         }
         if quitWhenIdle && !busy {
             try? input?.close()
@@ -331,5 +431,13 @@ final class Session: ObservableObject {
     func updatePackage(_ value: [String: Any]) {
         package.installed = value["installed"] as? Bool ?? false
         package.version = value["version"] as? String ?? ""
+    }
+
+    func updatePackageState(_ value: [String: Any]) {
+        package.installed = value["installed"] as? Bool ?? package.installed
+        package.version = value["version"] as? String ?? package.version
+        package.latest = value["latest"] as? String ?? ""
+        package.outOfDate = value["outOfDate"] as? Bool ?? false
+        package.serverReachable = value["serverReachable"] as? Bool ?? true
     }
 }

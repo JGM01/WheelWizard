@@ -165,10 +165,34 @@ public sealed class ProductWorkflow(string root, string toolsDirectory)
             throw new InvalidOperationException(string.Join("\n", errors));
     }
 
+    public async Task<PackageState> PackageState(CancellationToken ct)
+    {
+        using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        return await new RetroRewindManager(http).StateAsync(Package, ct);
+    }
+
+    public async Task UpdateRR(SetupInput s, Action<string, object> emit, CancellationToken ct)
+    {
+        RequirePreflight(s);
+        if (RetroRewindManager.InstalledVersion(Package) == null)
+            throw new InvalidOperationException("Retro Rewind is not installed");
+        using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        await new RetroRewindManager(http).UpdateAsync(Package, new InlineProgress(p => emit("progress", p)), ct);
+    }
+
+    // The managed RR package directory is dedicated to Retro Rewind, so removal clears it
+    // entirely (RetroRewindManager.UninstallAsync only removes the RR-owned entries, which is
+    // the right scope when the root is shared with other content).
+    public void RemoveRR()
+    {
+        if (Directory.Exists(Package))
+            Directory.Delete(Package, recursive: true);
+    }
+
     public async Task Install(SetupInput s, Action<string, object> emit, CancellationToken ct)
     {
         RequirePreflight(s);
-        if (Directory.Exists(Package))
+        if (RetroRewindManager.InstalledVersion(Package) != null)
             throw new InvalidOperationException("An RR installation already exists. This MVP only supports fresh installation.");
         using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
         await new RetroRewindManager(http).InstallAsync(

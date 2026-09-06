@@ -6,6 +6,17 @@ public sealed record UpdateEntry(SemVersion Version, string Url, string Descript
 
 public sealed record DeletionEntry(SemVersion Version, string Path);
 
+// A snapshot of the installed RR package and the latest the server offers, so callers can
+// render Install/Update/Ready states without owning the version comparison. ServerReachable
+// is false when the latest-version fetch fails (null Latest, not OutOfDate).
+public sealed record PackageState(
+    string? Version,
+    string? Latest,
+    bool Installed,
+    bool OutOfDate,
+    bool ServerReachable
+);
+
 // Orchestrates the full Retro Rewind lifecycle against an install root (the directory that
 // holds RetroRewind6/ and riivolution/), reusing RetroRewindPackage for the full-package
 // download/extract/validation primitives. Every method is frontend-agnostic; callers own
@@ -44,6 +55,30 @@ public sealed class RetroRewindManager(HttpClient http)
         if (current == null)
             return false;
         return current.ComparePrecedenceTo(await LatestVersionAsync(ct)) < 0;
+    }
+
+    public async Task<PackageState> StateAsync(string root, CancellationToken ct)
+    {
+        var installedText = InstalledVersion(root);
+        var installed = Installed(root);
+        SemVersion? latest = null;
+        bool serverReachable = true;
+        try
+        {
+            latest = await LatestVersionAsync(ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Any fetch/parse failure means we cannot vouch for an update right now.
+            serverReachable = false;
+        }
+        return new PackageState(
+            installedText,
+            latest?.ToString(),
+            installed != null,
+            installed != null && latest != null && installed.ComparePrecedenceTo(latest) < 0,
+            serverReachable
+        );
     }
 
     static SemVersion? Installed(string root) =>

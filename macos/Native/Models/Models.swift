@@ -24,4 +24,7 @@ struct RuntimeSettings: Codable {
 struct PackageInfo {
     var installed = false
     var version = ""
+    var latest = ""
+    var outOfDate = false
+    var serverReachable = true
 }
