@@ -14,6 +14,8 @@ flowchart TD
 
 Core's mod layer owns detection, planning, staged preparation, and recovery. Core's product workflow owns native launch order. Host owns framing, the operation gate, and the pending launch-choice callback. UI decisions travel as callback results, not dependencies from Core to a frontend.
 
+Conversion analysis follows `framework conversion orchestration → Core.Patches → Core.Archives → Core.Helpers`; Core.Patches also reads its own embedded baseline resources. Conversion messages are data rendered by the frontend. The framework retains source-mod replacement and its existing partial-mod conversion policy. Native conversion orchestration is not yet exposed, so this engine extraction introduces no session transitions or protocol commands.
+
 ## Session state
 
 `SessionControl` owns a single state: disconnected, connecting, idle, executing, or stopping. An executing/stopping operation is either a regular request or a launch carrying a launch phase. Only a launch can await a patch choice. Request context captures identity, command, domain, product, catalog query/page, and feedback intent.

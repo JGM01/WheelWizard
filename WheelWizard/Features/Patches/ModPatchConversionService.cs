@@ -1,7 +1,8 @@
+using WheelWizard.Core.Patches;
 using WheelWizard.Core.Mods;
 using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
-using WheelWizard.Features.Archives;
+using WheelWizard.Core.Archives;
 using WheelWizard.Helpers;
 using WheelWizard.Models.Mods;
 using WheelWizard.Services;
@@ -119,8 +120,8 @@ public sealed class ModPatchConversionService(ISzsPatchConverter szsPatchConvert
                             continue;
                         }
 
-                        warnings.AddRange(conversion.Analysis.Warnings.Select(warning => $"{fileName}: {warning}"));
-                        skipped.AddRange(conversion.Analysis.Skipped.Select(item => $"{fileName}: {item}"));
+                        warnings.AddRange(conversion.Analysis.Warnings.Select(warning => $"{fileName}: {PatchConversionText.Render(warning)}"));
+                        skipped.AddRange(conversion.Analysis.Skipped.Select(item => $"{fileName}: {PatchConversionText.Render(item)}"));
 
                         if (conversion.Analysis.Skipped.Count > 0)
                             continue;

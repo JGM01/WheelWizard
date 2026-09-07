@@ -1,4 +1,4 @@
-namespace WheelWizard.Features.Archives;
+namespace WheelWizard.Core.Archives;
 
 public interface ISzsArchiveDecoder
 {

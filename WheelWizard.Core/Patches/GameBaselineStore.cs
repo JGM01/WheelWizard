@@ -1,11 +1,11 @@
 using System.Reflection;
 using System.Text.Json;
 
-namespace WheelWizard.Features.Patches;
+namespace WheelWizard.Core.Patches;
 
 public sealed class GameBaselineStore
 {
-    private const string ResourcePrefix = "WheelWizard.Features.Patches.Resources.";
+    private const string ResourcePrefix = "WheelWizard.Core.Patches.Resources.";
     private static readonly Lazy<GameBaselineStore> s_instance = new(() => new GameBaselineStore());
     private static readonly JsonSerializerOptions s_jsonOptions = new() { PropertyNameCaseInsensitive = true };
 
@@ -31,7 +31,7 @@ public sealed class GameBaselineStore
     private static T LoadResource<T>(string fileName)
     {
         var assembly = Assembly.GetExecutingAssembly();
-        var resourceName = ResourcePrefix + fileName.Replace("-", "_").Replace(".json", ".json");
+        var resourceName = ResourcePrefix + fileName.Replace("-", "_");
         resourceName =
             assembly.GetManifestResourceNames().FirstOrDefault(name => name.EndsWith(fileName, StringComparison.OrdinalIgnoreCase))
             ?? resourceName;

@@ -113,3 +113,33 @@ Durable operation log: `~/Library/Application Support/WheelWizardNative/Logs/202
 - Bundled-helper and final framework/build results are recorded below after their final runs.
 
 Manual UI checks still to record: Delete/Keep/Cancel presentation, recovery confirmation in each frontend, F10 refresh in an already-open settings window, and Stop and Quit during publication. Their underlying protocol/state/filesystem paths have automated coverage; the dialogs themselves have not been visually accepted in this batch.
+
+## Shared SZS/BRSAR conversion engine (2026-09-06)
+
+The complete analysis/archive engine and binary helpers moved into Core (1,481 original source lines; unchanged baseline JSON excluded). Within those relocated files, namespace/message-boundary changes and targeted validation account for approximately 171 added / 131 removed lines. New regression tests total 250 lines. Framework orchestration remains in place; this batch adds no native Convert action or protocol command.
+
+### Automated and comparative verification
+
+- **161 Core tests and 202 framework tests passed.** New fixtures cover embedded baseline ownership, U8/Yaz0 round trips, Nintendo's `./` root, SZS additions/modifications/deletions, raw baselines, structured messages, supported BRSAR audio plus aligned wave data, unsupported/external audio, unsafe paths, negative sizes, and invalid/truncated references. Invalid U8 members cannot silently become deletion patches.
+- Swift session reducer/integration checks passed; **12 bundled-helper bridge tests passed**.
+- Native build and ad-hoc signature verification passed. Framework macOS build passed with zero warnings; Windows build passed with six existing platform-analysis warnings in `PathManager`.
+- Both baseline JSON resources are byte-for-byte unchanged from the pre-extraction revision.
+- The controlled real SZS fixture produced a byte-identical bundle using the pre-extraction engine and the extracted engine.
+- The local PAL `sound/revo_kart.brsar` also produced equivalent old/new analysis: zero patch entries, zero skipped entries and two warnings. Synthetic tests separately exercise changed BRSAR exports.
+
+### Controlled conversion fixture
+
+A disposable copy of PAL `Scene/UI/Race.szs` recolors only `./game_image/timg/tt_item_kinoko_3.tpl` magenta, preserving its RGB5A3 alpha coverage. The framework's existing baseline-selection/analysis and bundle-writing methods were invoked on that copy: one exported texture, one bundle, no skips or warnings. This is a backend integration smoke check; it does not establish visual acceptance of the framework's conversion dialog or directory-replacement flow.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| Original Race.szs | `20EC7C0D1684174582C052F00F94924DB8B91E1C158D782A85E227D31F924E3C` |
+| Modified source archive | `0CC71D7E7EC443D18A463907A4DDB54D8556D3B4C7D32E559C4F5DC9B61A30C5` |
+| Converted bundle | `63DB05AC9C228F6A222E4A85A37EEBB8245D631AA273122437938A67E6F6277B` |
+| Modified texture | `EC882901FF694468FFDF654CBBFFD410DA29625A2E482502AAF89AF7C24FD3C1` |
+
+Native RR **6.12.7** imported the converted bundle without compatibility blockers, prepared/published it and reached Running. Launch request: `83feab43-021a-4aee-a167-3e7bdbb4e235`. Expected manual observation: a magenta triple-mushroom HUD icon in Time Trials, followed by normal game exit.
+
+**Normal exit passed:** terminal outcome `success`, exit code 0, both products Ready. Original patches, mod metadata, configuration and UserData were restored and all snapshotted file hashes matched. The temporary fixture mod was removed. **Visual acceptance passed on the subsequent persistent-fixture test:** the user confirmed the magenta icon worked. The fixture mod and its generated runtime patch were then removed at the user’s request; all other mod and patch file hashes were verified unchanged.
+
+Durable fixture metadata, reproduction harness, protocol transcript, runtime logs and restoration verification are in `~/Library/Application Support/WheelWizardNative/Logs/PatchConversionAcceptance-20260906`. Temporary fixture source/output archives, the legacy comparison harness and the preserved backup snapshot remain under `/tmp/ww-patch-acceptance`. The archive payloads are local acceptance fixtures and are not committed to the repository.

@@ -1,22 +1,35 @@
-using WheelWizard.Features.Archives;
-using WheelWizard.Helpers;
-using static WheelWizard.Features.Patches.PatchConversionHelpers;
+using static WheelWizard.Core.OperationError;
+using WheelWizard.Core.Archives;
+using static WheelWizard.Core.Patches.PatchConversionHelpers;
 
-namespace WheelWizard.Features.Patches;
+namespace WheelWizard.Core.Patches;
 
 public sealed class SzsPatchConverter(ISzsArchiveDecoder archiveDecoder) : ISzsPatchConverter
 {
     public OperationResult<PatchConversionAnalysis> AnalyzeAgainstBaseline(BaselineEntry baseline, string moddedName, byte[] moddedBytes)
     {
+        try
+        {
+            return Analyze(baseline, moddedName, moddedBytes);
+        }
+        catch (Exception ex)
+        {
+            return new OperationError { Message = $"Failed to analyze '{moddedName}': {ex.Message}", Exception = ex };
+        }
+    }
+
+    private OperationResult<PatchConversionAnalysis> Analyze(BaselineEntry baseline, string moddedName, byte[] moddedBytes)
+    {
         if (!string.Equals(baseline.Kind, "szs", StringComparison.OrdinalIgnoreCase))
             return Fail("The selected baseline is not an SZS file.");
 
-        var warnings = new List<string>();
-        var skipped = new List<string>();
+        var warnings = new List<ConversionMessage>();
+        var skipped = new List<ConversionMessage>();
         var archiveTag = baseline.ArchiveTag;
+        ArchivePath.ValidateMember(archiveTag);
 
         if (!StripExtension(moddedName).Equals(archiveTag, StringComparison.OrdinalIgnoreCase))
-            warnings.Add(t("warning.file_name_differs_from_archive_tag", archiveTag)!);
+            warnings.Add(new ConversionMessage("warning.file_name_differs_from_archive_tag", archiveTag)!);
 
         var wholeFileHash = HashBytes64(moddedBytes);
         var wholeFileMatches = moddedBytes.Length == baseline.WholeFileSize && wholeFileHash == baseline.WholeFileHash;
@@ -26,7 +39,7 @@ public sealed class SzsPatchConverter(ISzsArchiveDecoder archiveDecoder) : ISzsP
         {
             if (wholeFileMatches)
             {
-                warnings.Add(t("warning.szs_matches_baseline"));
+                warnings.Add(new ConversionMessage("warning.szs_matches_baseline"));
                 return new PatchConversionAnalysis
                 {
                     CleanName = baseline.RelativePath,
@@ -38,7 +51,7 @@ public sealed class SzsPatchConverter(ISzsArchiveDecoder archiveDecoder) : ISzsP
                 };
             }
 
-            warnings.Add(t("warning.whole_file_baseline"));
+            warnings.Add(new ConversionMessage("warning.whole_file_baseline"));
 
             return new PatchConversionAnalysis
             {
@@ -52,7 +65,7 @@ public sealed class SzsPatchConverter(ISzsArchiveDecoder archiveDecoder) : ISzsP
                         $"{archiveTag}.szs",
                         baseline.RelativePath,
                         moddedBytes.ToArray(),
-                        t("text.whole_file_override")
+                        new ConversionMessage("text.whole_file_override")
                     ),
                 ],
                 Warnings = warnings,
@@ -74,7 +87,7 @@ public sealed class SzsPatchConverter(ISzsArchiveDecoder archiveDecoder) : ISzsP
 
             if (IsBlockedLooseRawOverrideExtension(logicalPath))
             {
-                skipped.Add(t("warning.unsupported_loose_override_extension", logicalPath)!);
+                skipped.Add(new ConversionMessage("warning.unsupported_loose_override_extension", logicalPath)!);
                 continue;
             }
 
@@ -91,7 +104,7 @@ public sealed class SzsPatchConverter(ISzsArchiveDecoder archiveDecoder) : ISzsP
                     BuildTaggedPatchName(logicalPath, archiveTag),
                     logicalPath,
                     moddedEntry.ToArray(),
-                    baselineMember == null ? t("text.new_archive_member") : t("text.modified_archive_member")
+                    baselineMember == null ? new ConversionMessage("text.new_archive_member") : new ConversionMessage("text.modified_archive_member")
                 )
             );
         }
@@ -101,12 +114,12 @@ public sealed class SzsPatchConverter(ISzsArchiveDecoder archiveDecoder) : ISzsP
             if (!moddedU8.Files.ContainsKey(logicalPath))
             {
                 var deletionPath = $"{logicalPath}.delete";
-                entries.Add(new(BuildTaggedPatchName(deletionPath, archiveTag), deletionPath, [], "Deleted archive member"));
+                entries.Add(new(BuildTaggedPatchName(deletionPath, archiveTag), deletionPath, [], new ConversionMessage("patch.detail.deleted_member")));
             }
         }
 
         if (entries.Count == 0 && skipped.Count == 0)
-            warnings.Add(t("warning.no_szs_differences"));
+            warnings.Add(new ConversionMessage("warning.no_szs_differences"));
 
         return new PatchConversionAnalysis
         {
@@ -186,6 +199,7 @@ public sealed class SzsPatchConverter(ISzsArchiveDecoder archiveDecoder) : ISzsP
 
     private static string BuildTaggedPatchName(string logicalPath, string archiveTag)
     {
+        ArchivePath.Validate(logicalPath);
         var segments = logicalPath.Split('/').Where(segment => segment.Length > 0 && segment != ".").ToArray();
         if (segments.Length == 0)
             throw new InvalidOperationException("Cannot build a tagged override for an empty archive path.");

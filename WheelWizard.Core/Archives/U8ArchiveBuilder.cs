@@ -1,7 +1,7 @@
+using WheelWizard.Core.Helpers;
 using System.Text;
-using WheelWizard.Helpers;
 
-namespace WheelWizard.Features.Archives;
+namespace WheelWizard.Core.Archives;
 
 public static class U8ArchiveBuilder
 {
@@ -14,6 +14,7 @@ public static class U8ArchiveBuilder
 
         foreach (var (path, bytes) in entries)
         {
+            ArchivePath.Validate(path);
             var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (segments.Length == 0)
                 throw new InvalidDataException("Cannot add an empty path to a U8 archive.");
@@ -33,6 +34,8 @@ public static class U8ArchiveBuilder
                 directory = childDirectory;
             }
 
+            if (directory.Children.TryGetValue(segments[^1], out var existing) && existing is BuildDirectory)
+                throw new InvalidDataException($"{path} conflicts with an archive directory path.");
             directory.Children[segments[^1]] = new BuildFile(segments[^1], bytes);
         }
 

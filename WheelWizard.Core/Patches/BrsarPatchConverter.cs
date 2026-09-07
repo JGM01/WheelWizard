@@ -1,21 +1,33 @@
+using WheelWizard.Core.Helpers;
 using System.Text;
-using WheelWizard.Helpers;
-using static WheelWizard.Features.Patches.PatchConversionHelpers;
+using static WheelWizard.Core.Patches.PatchConversionHelpers;
 
-namespace WheelWizard.Features.Patches;
+namespace WheelWizard.Core.Patches;
 
 public static class BrsarPatchConverter
 {
     private const int HeaderScanWindow = 0x4000;
     private static readonly Encoding Utf8 = Encoding.UTF8;
 
-    public static PatchConversionAnalysis AnalyzeAgainstBaseline(BaselineEntry baseline, string moddedName, byte[] moddedBytes)
+    public static OperationResult<PatchConversionAnalysis> AnalyzeAgainstBaseline(BaselineEntry baseline, string moddedName, byte[] moddedBytes)
+    {
+        try
+        {
+            return Analyze(baseline, moddedName, moddedBytes);
+        }
+        catch (Exception ex)
+        {
+            return new OperationError { Message = $"Failed to analyze '{moddedName}': {ex.Message}", Exception = ex };
+        }
+    }
+
+    private static OperationResult<PatchConversionAnalysis> Analyze(BaselineEntry baseline, string moddedName, byte[] moddedBytes)
     {
         if (!string.Equals(baseline.Kind, "brsar", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("The selected baseline is not a BRSAR file.");
 
-        var warnings = new List<string>();
-        var skipped = new List<string>();
+        var warnings = new List<ConversionMessage>();
+        var skipped = new List<ConversionMessage>();
         var moddedParse = ParseBrsar(moddedBytes);
         var baselineEntries = BuildBaselineEntries(baseline);
         var allFileIds = baselineEntries.Keys.Concat(moddedParse.Entries.Keys).Distinct().Order().ToArray();
@@ -53,30 +65,30 @@ public static class BrsarPatchConverter
 
             if (moddedEntry.Kind == BrsarEntryKind.Unsupported)
             {
-                skipped.Add(t("warning.brsar_file_id_unsupported_magic", fileId, moddedEntry.Magic ?? string.Empty)!);
+                skipped.Add(new ConversionMessage("warning.brsar_file_id_unsupported_magic", fileId, moddedEntry.Magic ?? string.Empty)!);
                 continue;
             }
 
             if (moddedEntry.Kind == BrsarEntryKind.External)
             {
-                skipped.Add(t("warning.brsar_file_id_external", fileId)!);
+                skipped.Add(new ConversionMessage("warning.brsar_file_id_external", fileId)!);
                 continue;
             }
 
-            skipped.Add(t("warning.brsar_file_id_unresolved", fileId)!);
+            skipped.Add(new ConversionMessage("warning.brsar_file_id_unresolved", fileId)!);
         }
 
         var unsupportedSummary = SummarizeUnsupportedBrsarCounts(moddedParse.UnsupportedCounts);
         if (unsupportedSummary != null)
-            warnings.Add(t("warning.brsar_unsupported_summary", unsupportedSummary)!);
+            warnings.Add(new ConversionMessage("warning.brsar_unsupported_summary", unsupportedSummary)!);
         if (moddedParse.ExternalCount > 0)
-            warnings.Add(t("warning.brsar_external_count", moddedParse.ExternalCount)!);
+            warnings.Add(new ConversionMessage("warning.brsar_external_count", moddedParse.ExternalCount)!);
         if (moddedParse.UnresolvedCount > 0)
-            warnings.Add(t("warning.brsar_unresolved_count", moddedParse.UnresolvedCount)!);
+            warnings.Add(new ConversionMessage("warning.brsar_unresolved_count", moddedParse.UnresolvedCount)!);
         if (entries.Count == 0 && skipped.Count == 0)
-            warnings.Add(t("warning.brsar_no_supported_differences"));
+            warnings.Add(new ConversionMessage("warning.brsar_no_supported_differences"));
 
-        return new()
+        return new PatchConversionAnalysis()
         {
             CleanName = baseline.RelativePath,
             ModdedName = moddedName,
@@ -164,7 +176,7 @@ public static class BrsarPatchConverter
             throw new InvalidDataException("The selected BRSAR file does not start with the RSAR header.");
 
         var infoOffset = BigEndianBinaryHelper.BufferToInt32(bytes, 0x18);
-        var infoBase = infoOffset + 0x08;
+        var infoBase = checked(infoOffset + 0x08);
         var fileTableOffset = ResolveDataRef(bytes, infoBase + 0x18, infoBase);
         var groupTableOffset = ResolveDataRef(bytes, infoBase + 0x20, infoBase);
 
@@ -185,6 +197,8 @@ public static class BrsarPatchConverter
             var entryOffset = fileEntryOffsets[fileId];
             var declaredFileSize = BigEndianBinaryHelper.BufferToInt32(bytes, entryOffset);
             var declaredWaveSize = BigEndianBinaryHelper.BufferToInt32(bytes, entryOffset + 0x04);
+            if (declaredFileSize < 0 || declaredWaveSize < 0)
+                throw new InvalidDataException($"BRSAR sound {fileId} at offset {entryOffset} has negative file/wave size.");
             var externalNameRef = ResolveDataRef(bytes, entryOffset + 0x0c, infoBase);
             if (externalNameRef != null)
             {
@@ -195,7 +209,7 @@ public static class BrsarPatchConverter
                     Utf8.GetBytes(externalPath),
                     null,
                     null,
-                    externalPath.Length > 0 ? t("text.external_reference_with_path", externalPath)! : t("text.external_reference")
+                    externalPath.Length > 0 ? new ConversionMessage("text.external_reference_with_path", externalPath)! : new ConversionMessage("text.external_reference")
                 );
                 continue;
             }
@@ -231,8 +245,8 @@ public static class BrsarPatchConverter
             var itemOffset = group.ItemOffsets[itemIndex];
             var fileRelativeOffset = BigEndianBinaryHelper.BufferToInt32(bytes, itemOffset + 0x04);
             var audioRelativeOffset = BigEndianBinaryHelper.BufferToInt32(bytes, itemOffset + 0x0c);
-            var mainGuess = group.FileDataOffset + fileRelativeOffset;
-            var waveGuess = group.AudioDataOffset + audioRelativeOffset;
+            var mainGuess = checked(group.FileDataOffset + fileRelativeOffset);
+            var waveGuess = checked(group.AudioDataOffset + audioRelativeOffset);
             var mainHeader = FindNearestBrsarHeader(knownHeaders, mainGuess, declaredFileSize);
 
             if (mainHeader == null)
@@ -251,19 +265,19 @@ public static class BrsarPatchConverter
                     mainBytes,
                     null,
                     mainHeader.Magic,
-                    t("text.brsar_entry", mainHeader.Magic, fileId)!
+                    new ConversionMessage("text.brsar_entry", mainHeader.Magic, fileId)!
                 );
                 continue;
             }
 
             var exportBytes = mainBytes;
-            var detail = t("text.brsar_entry", mainHeader.Magic, fileId)!;
+            var detail = new ConversionMessage("text.brsar_entry", mainHeader.Magic, fileId)!;
             var waveHeader = FindNearestRwarHeader(rwarHeaders, waveGuess, declaredWaveSize, mainHeader.Offset - mainGuess);
             if (declaredWaveSize > 0 && waveHeader != null)
             {
                 var waveBytes = SliceBytes(bytes, waveHeader.Offset, waveHeader.Offset + waveHeader.Size);
                 exportBytes = JoinWithAlignment(mainBytes, waveBytes, 0x20);
-                detail = t("text.brsar_entry_with_rwar", mainHeader.Magic, fileId)!;
+                detail = new ConversionMessage("text.brsar_entry_with_rwar", mainHeader.Magic, fileId)!;
             }
 
             entries[fileId] = new(BrsarEntryKind.Supported, exportBytes, exportBytes, mainHeader.Magic, detail);
@@ -288,13 +302,18 @@ public static class BrsarPatchConverter
     private static List<int> ParseReferenceTable(byte[] bytes, int tableOffset, int baseAddress)
     {
         var count = BigEndianBinaryHelper.BufferToInt32(bytes, tableOffset);
+        if (count < 0 || tableOffset < 0 || tableOffset > bytes.Length - 4
+            || count > (bytes.Length - tableOffset - 4) / 8)
+            throw new InvalidDataException($"BRSAR reference table at offset {tableOffset} has invalid count {count}.");
         var offsets = new List<int>();
 
         for (var index = 0; index < count; index++)
         {
             var target = ResolveDataRef(bytes, tableOffset + 4 + index * 8, baseAddress);
-            if (target != null)
-                offsets.Add(target.Value);
+            // Omitting a table slot would silently renumber subsequent sound IDs.
+            if (target == null)
+                throw new InvalidDataException($"BRSAR reference table at offset {tableOffset} has an empty slot {index}.");
+            offsets.Add(target.Value);
         }
 
         return offsets;
@@ -302,19 +321,22 @@ public static class BrsarPatchConverter
 
     private static int? ResolveDataRef(byte[] bytes, int refOffset, int baseAddress)
     {
-        if (refOffset < 0 || refOffset + 8 > bytes.Length)
-            return null;
+        if (refOffset < 0 || refOffset > bytes.Length - 8)
+            throw new InvalidDataException($"BRSAR reference at offset {refOffset} is truncated.");
 
         var refType = bytes[refOffset];
         var value = BigEndianBinaryHelper.BufferToInt32(bytes, refOffset + 4);
         if (value == 0)
             return null;
-        if (refType == 0)
-            return value;
-        if (refType == 1)
-            return baseAddress + value;
-
-        throw new InvalidDataException($"Unsupported BRSAR data reference type {refType}.");
+        var target = refType switch
+        {
+            0 => value,
+            1 => checked(baseAddress + value),
+            _ => throw new InvalidDataException($"Unsupported BRSAR data reference type {refType} at offset {refOffset}."),
+        };
+        if (target < 0 || target >= bytes.Length)
+            throw new InvalidDataException($"BRSAR reference at offset {refOffset} points outside the file: {target}.");
+        return target;
     }
 
     private static (List<KnownBrsarHeader> KnownHeaders, List<RwarHeader> RwarHeaders) ScanBrsarHeaders(byte[] bytes)
@@ -332,7 +354,7 @@ public static class BrsarPatchConverter
                 continue;
 
             var size = BigEndianBinaryHelper.BufferToInt32(bytes, offset + 0x08);
-            if (size < 0x20 || offset + size > bytes.Length)
+            if (size < 0x20 || size > bytes.Length - offset)
                 continue;
 
             if (magic == "RWAR")
@@ -513,9 +535,9 @@ public static class BrsarPatchConverter
         Dictionary<string, int> UnsupportedCounts
     );
 
-    private sealed record BrsarEntry(BrsarEntryKind Kind, byte[] CompareBytes, byte[]? ExportBytes, string? Magic, string Detail)
+    private sealed record BrsarEntry(BrsarEntryKind Kind, byte[] CompareBytes, byte[]? ExportBytes, string? Magic, ConversionMessage Detail)
     {
-        public static BrsarEntry Unresolved(string detail) => new(BrsarEntryKind.Unresolved, [], null, null, detail);
+        public static BrsarEntry Unresolved(string detail) => new(BrsarEntryKind.Unresolved, [], null, null, new ConversionMessage("patch.detail.unresolved", detail));
     }
 
     private sealed record GroupInfo(int FileDataOffset, int AudioDataOffset, List<int> ItemOffsets);

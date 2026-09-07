@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace WheelWizard.Features.Patches;
+namespace WheelWizard.Core.Patches;
 
 public sealed class GameBaselineIndex
 {
@@ -60,7 +60,7 @@ public sealed record BaselineMember(int Size, string Hash);
 
 public sealed record BaselineBrsarEntry(string Kind, string? Magic, int Size, string Hash);
 
-public sealed record PatchConversionEntry(string ExportPath, string LogicalPath, byte[] Bytes, string Detail);
+public sealed record PatchConversionEntry(string ExportPath, string LogicalPath, byte[] Bytes, ConversionMessage Detail);
 
 public sealed class PatchConversionAnalysis
 {
@@ -69,14 +69,7 @@ public sealed class PatchConversionAnalysis
     public string Mode { get; init; } = string.Empty;
     public string? ArchiveTag { get; init; }
     public IReadOnlyList<PatchConversionEntry> Entries { get; init; } = [];
-    public IReadOnlyList<string> Warnings { get; init; } = [];
-    public IReadOnlyList<string> Skipped { get; init; } = [];
+    public IReadOnlyList<ConversionMessage> Warnings { get; init; } = [];
+    public IReadOnlyList<ConversionMessage> Skipped { get; init; } = [];
 }
 
-public sealed class ModPatchConversionResult
-{
-    public int ConvertedFileCount { get; init; }
-    public int WrittenPatchCount { get; init; }
-    public IReadOnlyList<string> Warnings { get; init; } = [];
-    public IReadOnlyList<string> Skipped { get; init; } = [];
-}

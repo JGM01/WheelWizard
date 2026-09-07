@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace WheelWizard.Features.Patches;
+namespace WheelWizard.Core.Patches;
 
 internal static class PatchConversionHelpers
 {

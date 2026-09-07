@@ -1,3 +1,5 @@
+using WheelWizard.Core.Archives;
+
 namespace WheelWizard.Features.Archives;
 
 public static class ArchivesExtensions

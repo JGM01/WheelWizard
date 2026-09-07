@@ -1,3 +1,4 @@
+using WheelWizard.Core.Patches;
 namespace WheelWizard.Features.Patches;
 
 public static class PatchesExtensions

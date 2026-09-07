@@ -1,4 +1,5 @@
-﻿using System.Security.Cryptography;
+using WheelWizard.Core.Helpers;
+using System.Security.Cryptography;
 using System.Text;
 using WheelWizard.Helpers;
 

@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace WheelWizard.Helpers;
+namespace WheelWizard.Core.Helpers;
 
 public static class BinaryStringHelper
 {
